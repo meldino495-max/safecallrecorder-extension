@@ -3572,7 +3572,7 @@ $("recNameAddBtn").onclick = (e) => {
   $("recNameAddMenu").classList.toggle("hidden");
 };
 for (const btn of $("recNameAddMenu").querySelectorAll<HTMLButtonElement>("[data-add]")) {
-  btn.onclick = (e) => {
+  btn.onclick = (e: MouseEvent) => {
     e.stopPropagation();
     const part = btn.dataset.add as RecordingNamePart;
     $("recNameAddMenu").classList.add("hidden");

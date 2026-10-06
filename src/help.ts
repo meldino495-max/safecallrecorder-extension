@@ -13,7 +13,7 @@ function setupHelpImages() {
 function setupToc() {
   const links = document.querySelectorAll<HTMLAnchorElement>(".help-toc a[href^='#']");
   for (const a of links) {
-    a.addEventListener("click", (ev) => {
+    a.addEventListener("click", (ev: MouseEvent) => {
       const id = a.getAttribute("href")?.slice(1);
       if (!id) return;
       const el = document.getElementById(id);
