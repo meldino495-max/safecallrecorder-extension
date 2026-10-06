@@ -19,6 +19,23 @@ function hasDownloadsApi(): boolean {
   return Boolean(chrome?.downloads?.download);
 }
 
+/** URLs allowed for chrome.downloads from the service worker (blocks file/javascript). */
+export function isAllowedDownloadUrl(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return (
+      parsed.protocol === "https:" ||
+      parsed.protocol === "http:" ||
+      parsed.protocol === "blob:" ||
+      parsed.protocol === "chrome-extension:"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function anchorDownload(url: string, filename: string) {
   const a = document.createElement("a");
   a.href = url;
@@ -68,6 +85,12 @@ export async function saveUrlWithChromeDownloads(
   filename: string,
   downloadFolder?: string | null
 ): Promise<SaveDownloadResult> {
+  if (!isAllowedDownloadUrl(url)) {
+    return {
+      ok: false,
+      error: { code: "URL_NOT_ALLOWED", message: "不允许的下载 URL 协议。" }
+    };
+  }
   try {
     const downloadId = await chrome.downloads.download({
       url,

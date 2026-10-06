@@ -4,6 +4,16 @@ import { applyStopDownloadModeToSettings } from "../stop-download-mode";
 export const GOOGLE_DRIVE_CONFIG_VERSION = 1;
 export const GOOGLE_DRIVE_CONFIG_FILENAME = "safecallrecorder-google-drive-config.json";
 
+export type GoogleDriveConfigExportOptions = {
+  includeClientSecret?: boolean;
+  includeAuthSession?: boolean;
+};
+
+export const DEFAULT_GOOGLE_DRIVE_EXPORT_OPTIONS: GoogleDriveConfigExportOptions = {
+  includeClientSecret: false,
+  includeAuthSession: false
+};
+
 export type GoogleDriveAuthSessionExport = {
   accessToken: string;
   expiresAt: number;
@@ -43,8 +53,11 @@ export function isUsableAuthSessionExport(session?: GoogleDriveAuthSessionExport
 export function buildGoogleDriveConfigExport(
   settings: AppSettings,
   authSession?: GoogleDriveAuthSessionExport | null,
-  credentials?: { clientId?: string; clientSecret?: string }
+  credentials?: { clientId?: string; clientSecret?: string },
+  options: GoogleDriveConfigExportOptions = DEFAULT_GOOGLE_DRIVE_EXPORT_OPTIONS
 ): GoogleDriveConfigExport {
+  const includeClientSecret = options.includeClientSecret === true;
+  const includeAuthSession = options.includeAuthSession === true;
   const clientId = credentials?.clientId?.trim() || settings.googleDriveClientId?.trim();
   const clientSecret = credentials?.clientSecret?.trim() || settings.googleDriveClientSecret?.trim();
   const googleDrive: GoogleDriveConfigExport["googleDrive"] = {
@@ -56,13 +69,17 @@ export function buildGoogleDriveConfigExport(
     accountEmail: settings.googleDriveAccountEmail
   };
   if (clientId) googleDrive.clientId = clientId;
-  if (clientSecret) googleDrive.clientSecret = clientSecret;
+  if (includeClientSecret && clientSecret) googleDrive.clientSecret = clientSecret;
+  let session: GoogleDriveAuthSessionExport | undefined;
+  if (includeAuthSession && authSession && isUsableAuthSessionExport(authSession)) {
+    session = authSession;
+  }
   return {
     kind: "SafeCallRecorderGoogleDriveConfig",
     version: GOOGLE_DRIVE_CONFIG_VERSION,
     exportedAt: Date.now(),
     googleDrive,
-    authSession: isUsableAuthSessionExport(authSession) ? authSession! : undefined,
+    authSession: session,
     stopDownloadMode: settings.stopDownloadMode
   };
 }
@@ -70,9 +87,10 @@ export function buildGoogleDriveConfigExport(
 export function serializeGoogleDriveConfig(
   settings: AppSettings,
   authSession?: GoogleDriveAuthSessionExport | null,
-  credentials?: { clientId?: string; clientSecret?: string }
+  credentials?: { clientId?: string; clientSecret?: string },
+  options: GoogleDriveConfigExportOptions = DEFAULT_GOOGLE_DRIVE_EXPORT_OPTIONS
 ): string {
-  return JSON.stringify(buildGoogleDriveConfigExport(settings, authSession, credentials), null, 2);
+  return JSON.stringify(buildGoogleDriveConfigExport(settings, authSession, credentials, options), null, 2);
 }
 
 export function parseGoogleDriveConfig(raw: string): GoogleDriveConfigExport {
@@ -214,14 +232,27 @@ export function googleDriveSettingsClearPatch(settings: AppSettings): Partial<Ap
   return patch;
 }
 
-export function describeGoogleDriveConfigExport(authSession?: GoogleDriveAuthSessionExport | null): string {
-  if (authSession?.refreshToken?.trim()) {
-    return "含客户端 ID、密钥与长期登录状态；导入后通常无需再点「连接 Google 账号」。";
+export function describeGoogleDriveConfigExport(
+  options: GoogleDriveConfigExportOptions = DEFAULT_GOOGLE_DRIVE_EXPORT_OPTIONS,
+  authSession?: GoogleDriveAuthSessionExport | null
+): string {
+  const includeSecret = options.includeClientSecret === true;
+  const includeAuth = options.includeAuthSession === true;
+  if (!includeSecret && !includeAuth) {
+    return "含客户端 ID、文件夹与上传选项（不含密钥与登录令牌；导入后需填写密钥并连接 Google）。";
   }
-  if (isUsableAuthSessionExport(authSession)) {
-    return "含客户端 ID、密钥与短期登录状态（约 1 小时内有效）；请尽快导入。";
+  const parts = ["含客户端 ID 与文件夹设置"];
+  if (includeSecret) parts.push("含 OAuth 客户端密钥");
+  if (includeAuth) {
+    if (authSession?.refreshToken?.trim()) {
+      parts.push("含长期登录状态");
+    } else if (isUsableAuthSessionExport(authSession)) {
+      parts.push("含短期登录状态（约 1 小时内有效）");
+    } else {
+      parts.push("未包含有效登录状态");
+    }
   }
-  return "含客户端 ID 与密钥；导入后需点「连接 Google 账号」授权。";
+  return `${parts.join("；")}；文件敏感，请勿分享。`;
 }
 
 export function googleDriveConfigFileName(exportedAt = Date.now()): string {

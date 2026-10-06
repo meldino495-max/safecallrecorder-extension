@@ -27,7 +27,10 @@ describe("settings backup", () => {
       clientId: "123.apps.googleusercontent.com",
       refreshToken: "refresh-abc"
     };
-    const json = serializeSettingsBackup(settings, authSession);
+    const json = serializeSettingsBackup(settings, authSession, {
+      includeClientSecret: true,
+      includeAuthSession: true
+    });
     const imported = parseSettingsImport(json);
     expect(imported.type).toBe("full");
     if (imported.type !== "full") return;
@@ -71,5 +74,51 @@ describe("settings backup", () => {
     const doc = buildSettingsBackupExport(DEFAULT_SETTINGS);
     expect(doc.kind).toBe("SafeCallRecorderSettings");
     expect(doc.settings.defaultBitrate).toBe(DEFAULT_SETTINGS.defaultBitrate);
+    expect(doc.authSession).toBeUndefined();
+  });
+
+  it("redacts client secret and auth session by default", () => {
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      googleDriveClientSecret: "GOCSPX-secret"
+    };
+    const authSession = {
+      accessToken: "ya29.test",
+      expiresAt: Date.now() + 3_600_000,
+      clientId: "123.apps.googleusercontent.com",
+      refreshToken: "refresh-abc"
+    };
+    const doc = buildSettingsBackupExport(settings, authSession);
+    expect(doc.settings.googleDriveClientSecret).toBeUndefined();
+    expect(doc.authSession).toBeUndefined();
+  });
+
+  it("ignores desktop-only recordingPresets when importing in the extension", () => {
+    const json = JSON.stringify({
+      kind: "SafeCallRecorderSettings",
+      version: 1,
+      exportedAt: 1,
+      settings: {
+        ...DEFAULT_SETTINGS,
+        defaultBitrate: 72000
+      },
+      desktop: {
+        recordingPresets: [
+          {
+            id: "preset99",
+            name: "测试",
+            device_index: 3,
+            device_key: "mme-name:test"
+          }
+        ],
+        last_preset_id: "preset99"
+      }
+    });
+    const imported = parseSettingsImport(json);
+    expect(imported.type).toBe("full");
+    if (imported.type !== "full") return;
+    expect(imported.doc.settings.defaultBitrate).toBe(72000);
+    const applied = applySettingsBackupImport(imported.doc);
+    expect(applied.defaultBitrate).toBe(72000);
   });
 });

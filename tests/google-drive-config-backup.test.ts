@@ -58,7 +58,9 @@ describe("google drive config backup", () => {
     };
     const doc = buildGoogleDriveConfigExport(
       { ...DEFAULT_SETTINGS, googleDriveEnabled: true, googleDriveFolderId: "abc" },
-      authSession
+      authSession,
+      undefined,
+      { includeAuthSession: true }
     );
     expect(doc.authSession?.accessToken).toBe("ya29.test");
     const roundTrip = parseGoogleDriveConfig(JSON.stringify(doc));
@@ -81,12 +83,14 @@ describe("google drive config backup", () => {
         expiresAt: Date.now() - 1000,
         clientId: "123.apps.googleusercontent.com",
         refreshToken: "refresh-abc"
-      }
+      },
+      undefined,
+      { includeAuthSession: true }
     );
     expect(doc.authSession?.refreshToken).toBe("refresh-abc");
   });
 
-  it("exports client secret in config", () => {
+  it("omits client secret from export by default", () => {
     const settings = {
       ...DEFAULT_SETTINGS,
       googleDriveEnabled: true,
@@ -95,16 +99,29 @@ describe("google drive config backup", () => {
       googleDriveClientSecret: "GOCSPX-secret"
     };
     const doc = buildGoogleDriveConfigExport(settings);
+    expect(doc.googleDrive.clientSecret).toBeUndefined();
+  });
+
+  it("exports client secret when explicitly requested", () => {
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      googleDriveEnabled: true,
+      googleDriveFolderId: "abc",
+      googleDriveClientId: "123.apps.googleusercontent.com",
+      googleDriveClientSecret: "GOCSPX-secret"
+    };
+    const doc = buildGoogleDriveConfigExport(settings, null, undefined, { includeClientSecret: true });
     expect(doc.googleDrive.clientSecret).toBe("GOCSPX-secret");
     const applied = applyGoogleDriveConfig(DEFAULT_SETTINGS, parseGoogleDriveConfig(JSON.stringify(doc)));
     expect(applied.googleDriveClientSecret).toBe("GOCSPX-secret");
   });
 
-  it("exports credentials from input override when not in settings", () => {
+  it("exports credentials from input override when sensitive export enabled", () => {
     const doc = buildGoogleDriveConfigExport(
       { ...DEFAULT_SETTINGS, googleDriveEnabled: true, googleDriveFolderId: "abc" },
       null,
-      { clientId: "123.apps.googleusercontent.com", clientSecret: "GOCSPX-from-input" }
+      { clientId: "123.apps.googleusercontent.com", clientSecret: "GOCSPX-from-input" },
+      { includeClientSecret: true }
     );
     expect(doc.googleDrive.clientId).toBe("123.apps.googleusercontent.com");
     expect(doc.googleDrive.clientSecret).toBe("GOCSPX-from-input");
@@ -126,7 +143,9 @@ describe("google drive config backup", () => {
         googleDriveClientId: "123.apps.googleusercontent.com",
         googleDriveClientSecret: "GOCSPX-secret"
       },
-      authSession
+      authSession,
+      undefined,
+      { includeClientSecret: true, includeAuthSession: true }
     );
     const applied = applyGoogleDriveConfig(DEFAULT_SETTINGS, config);
     expect(applied.googleDriveAccountEmail).toBe("user@example.com");

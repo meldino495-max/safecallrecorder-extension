@@ -11,6 +11,17 @@ import { DEFAULT_SETTINGS, type AppSettings } from "./types";
 export const SETTINGS_BACKUP_KIND = "SafeCallRecorderSettings";
 export const SETTINGS_BACKUP_VERSION = 1;
 
+/** Default export omits OAuth client secret and login tokens. */
+export type SettingsExportSensitiveOptions = {
+  includeClientSecret?: boolean;
+  includeAuthSession?: boolean;
+};
+
+export const DEFAULT_SETTINGS_EXPORT_SENSITIVE: SettingsExportSensitiveOptions = {
+  includeClientSecret: false,
+  includeAuthSession: false
+};
+
 export type SettingsBackupExport = {
   kind: typeof SETTINGS_BACKUP_KIND;
   version: typeof SETTINGS_BACKUP_VERSION;
@@ -23,12 +34,25 @@ export type SettingsImportPayload =
   | { type: "full"; doc: SettingsBackupExport }
   | { type: "google-drive"; doc: GoogleDriveConfigExport };
 
+function settingsForExport(settings: AppSettings, includeClientSecret: boolean): AppSettings {
+  const normalized = applyRecordingNameProfilesToSettings({ ...settings });
+  if (includeClientSecret) return normalized;
+  if (!normalized.googleDriveClientSecret?.trim()) return normalized;
+  return { ...normalized, googleDriveClientSecret: undefined };
+}
+
 export function buildSettingsBackupExport(
   settings: AppSettings,
-  authSession?: GoogleDriveAuthSessionExport | null
+  authSession?: GoogleDriveAuthSessionExport | null,
+  sensitive: SettingsExportSensitiveOptions = DEFAULT_SETTINGS_EXPORT_SENSITIVE
 ): SettingsBackupExport {
-  const normalized = applyRecordingNameProfilesToSettings({ ...settings });
-  let session = authSession && isUsableAuthSessionExport(authSession) ? authSession : undefined;
+  const includeClientSecret = sensitive.includeClientSecret === true;
+  const includeAuthSession = sensitive.includeAuthSession === true;
+  const normalized = settingsForExport(settings, includeClientSecret);
+  let session: GoogleDriveAuthSessionExport | undefined;
+  if (includeAuthSession && authSession && isUsableAuthSessionExport(authSession)) {
+    session = authSession;
+  }
   const clientId = normalized.googleDriveClientId?.trim();
   if (session && clientId && session.clientId !== clientId) {
     session = { ...session, clientId };
@@ -44,9 +68,10 @@ export function buildSettingsBackupExport(
 
 export function serializeSettingsBackup(
   settings: AppSettings,
-  authSession?: GoogleDriveAuthSessionExport | null
+  authSession?: GoogleDriveAuthSessionExport | null,
+  sensitive: SettingsExportSensitiveOptions = DEFAULT_SETTINGS_EXPORT_SENSITIVE
 ): string {
-  return JSON.stringify(buildSettingsBackupExport(settings, authSession), null, 2);
+  return JSON.stringify(buildSettingsBackupExport(settings, authSession, sensitive), null, 2);
 }
 
 export function parseSettingsBackup(raw: string): SettingsBackupExport {
@@ -131,12 +156,25 @@ export function settingsBackupFileName(exportedAt = Date.now()): string {
   return `safecallrecorder-settings-${stamp}.json`;
 }
 
-export function describeSettingsBackupExport(authSession?: GoogleDriveAuthSessionExport | null): string {
-  if (authSession?.refreshToken?.trim()) {
-    return "含全部设置与 Google 长期登录状态；导入后通常无需再点「连接 Google 账号」。";
+export function describeSettingsBackupExport(
+  sensitive: SettingsExportSensitiveOptions = DEFAULT_SETTINGS_EXPORT_SENSITIVE,
+  authSession?: GoogleDriveAuthSessionExport | null
+): string {
+  const includeSecret = sensitive.includeClientSecret === true;
+  const includeAuth = sensitive.includeAuthSession === true;
+  if (!includeSecret && !includeAuth) {
+    return "含全部选项（不含 OAuth 客户端密钥与登录令牌；导入后需重新填写密钥并连接 Google）。";
   }
-  if (isUsableAuthSessionExport(authSession)) {
-    return "含全部设置与 Google 短期登录状态（约 1 小时内有效）；请尽快导入。";
+  const parts = ["含全部选项"];
+  if (includeSecret) parts.push("含 OAuth 客户端密钥");
+  if (includeAuth) {
+    if (authSession?.refreshToken?.trim()) {
+      parts.push("含 Google 长期登录状态");
+    } else if (isUsableAuthSessionExport(authSession)) {
+      parts.push("含 Google 短期登录状态（约 1 小时内有效）");
+    } else {
+      parts.push("未包含有效登录状态");
+    }
   }
-  return "含全部设置；若启用 Google 云端，导入后可能需重新连接账号。";
+  return `${parts.join("；")}；文件敏感，请勿分享。`;
 }

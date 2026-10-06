@@ -9,13 +9,13 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@types/chrome": "latest",
+    "@types/chrome": "^0.1.36",
     "@types/node": "^26.1.1",
-    "esbuild": "latest",
-    "fake-indexeddb": "latest",
+    "esbuild": "^0.28.2",
+    "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.11.0",
-    "typescript": "latest",
-    "vitest": "latest"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

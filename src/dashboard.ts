@@ -139,7 +139,8 @@ import {
   parseSettingsImport,
   serializeSettingsBackup,
   settingsBackupFileName,
-  type SettingsBackupExport
+  type SettingsBackupExport,
+  type SettingsExportSensitiveOptions
 } from "./settings-backup";
 import {
   formatGoogleAuthExpiryHint,
@@ -1265,6 +1266,13 @@ function escapeAttr(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function readRecordingNameConfigFromUi(): RecordingNameConfig {
   const { profiles, activeId } = normalizeRecordingNameProfiles(settings);
   const stored = profiles.find((p) => p.id === activeId)?.config ?? normalizeRecordingNameConfig(settings.recordingName);
@@ -2313,7 +2321,7 @@ function renderHistory(sessions: Session[], activeIds: string[], force = false) 
       <div class="history-actions"></div>`;
     item.querySelector("h3")!.textContent = title;
     item.querySelector(".history-meta-grid")!.innerHTML =
-      `<div>时间：${when}</div><div>时长：${dur} · 大小：${size}</div><div>设备：${s.selectedDeviceLabel || "声音设备"}</div><div>音质：${rate}</div>`;
+      `<div>时间：${escapeHtml(when)}</div><div>时长：${escapeHtml(dur)} · 大小：${escapeHtml(size)}</div><div>设备：${escapeHtml(s.selectedDeviceLabel || "声音设备")}</div><div>音质：${escapeHtml(rate)}</div>`;
     const stateEl = item.querySelector(".history-state")!;
     stateEl.textContent = isDeleting ? "正在删除…" : state;
     stateEl.className = `history-state ${canDownloadMp3 ? "ok" : mp3Failed ? "warn" : "ok"}`;
@@ -3389,6 +3397,30 @@ async function importFullSettingsBackup(doc: SettingsBackupExport) {
   setStatus(`全部设置已导入。${folderHint}`.trim());
 }
 
+function readExportSensitiveOptions(): {
+  sensitive: SettingsExportSensitiveOptions;
+  driveOptions: import("./google-drive/config-backup").GoogleDriveConfigExportOptions;
+} {
+  const include = $<HTMLInputElement>("exportIncludeSensitive").checked;
+  return {
+    sensitive: { includeClientSecret: include, includeAuthSession: include },
+    driveOptions: { includeClientSecret: include, includeAuthSession: include }
+  };
+}
+
+async function confirmSensitiveSettingsExport(): Promise<boolean> {
+  if (!$<HTMLInputElement>("exportIncludeSensitive").checked) return true;
+  return showConfirm({
+    title: "导出 Google 密钥与登录状态？",
+    body:
+      "JSON 将包含 OAuth 客户端密钥与 Google 登录令牌。获得此文件的任何人可能访问你的云端录音。" +
+      "请仅用于个人换机/桌面版同步，勿分享、勿上传到公开位置。若文件曾泄露，请到 Google Cloud Console 轮换客户端密钥。",
+    cancelText: "取消",
+    okText: "仍要导出",
+    danger: true
+  });
+}
+
 async function fetchAuthSessionForExport(clientId: string) {
   let authSession =
     (
@@ -3697,23 +3729,28 @@ $("settingsBtn").onclick = () => $("settingsPanel").classList.toggle("hidden");
 $("exportAllSettings").onclick = () => {
   void (async () => {
     try {
+      if (!(await confirmSensitiveSettingsExport())) return;
       flushGoogleDriveCredentialsFromUi();
       await syncGoogleDriveSettingsToStorage();
+      const { sensitive } = readExportSensitiveOptions();
       const exportClientId = $<HTMLInputElement>("googleDriveClientId").value.trim();
-      const authSession = exportClientId
-        ? await fetchAuthSessionForExport(exportClientId)
-        : await fetchAuthSessionForExport(settings.googleDriveClientId?.trim() || "");
-      if (
-        settings.googleDriveEnabled &&
-        isGoogleDriveLinked(settings) &&
-        !isUsableAuthSessionExport(authSession)
-      ) {
-        setStatus(
-          "导出失败：Google 登录无法备份。请填写客户端密钥后重新点「连接 Google 账号」完成长期授权，再导出。"
-        );
-        return;
+      let authSession: Awaited<ReturnType<typeof fetchAuthSessionForExport>> | undefined;
+      if (sensitive.includeAuthSession) {
+        authSession = exportClientId
+          ? await fetchAuthSessionForExport(exportClientId)
+          : await fetchAuthSessionForExport(settings.googleDriveClientId?.trim() || "");
+        if (
+          settings.googleDriveEnabled &&
+          isGoogleDriveLinked(settings) &&
+          !isUsableAuthSessionExport(authSession)
+        ) {
+          setStatus(
+            "已勾选敏感导出，但当前 Google 登录无法备份。请填写客户端密钥后重新点「连接 Google 账号」完成长期授权，或不勾选敏感项后导出。"
+          );
+          return;
+        }
       }
-      const doc = buildSettingsBackupExport(settings, authSession);
+      const doc = buildSettingsBackupExport(settings, authSession, sensitive);
       const json = JSON.stringify(doc, null, 2);
       const blob = new Blob([json], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -3725,8 +3762,8 @@ $("exportAllSettings").onclick = () => {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      const detail = describeSettingsBackupExport(authSession);
-      setStatus(`全部设置已导出（${detail}）此文件含 Google 密钥与登录信息，请勿分享或上传到公开位置。`);
+      const detail = describeSettingsBackupExport(sensitive, authSession);
+      setStatus(`全部设置已导出（${detail}）`);
     } catch (e) {
       setStatus(friendlyError(e instanceof Error ? e.message : String(e)));
     }
@@ -3923,12 +3960,14 @@ $("googleDriveAutoUploadOnStop").onchange = async () => {
 $("googleDriveExportConfig").onclick = () => {
   void (async () => {
     try {
+      if (!(await confirmSensitiveSettingsExport())) return;
       flushGoogleDriveCredentialsFromUi();
       await syncGoogleDriveSettingsToStorage();
       if (!settings.googleDriveFolderId?.trim()) {
         setStatus("请先选择 Google Drive 文件夹后再导出配置。");
         return;
       }
+      const { driveOptions } = readExportSensitiveOptions();
       const exportCredentials = {
         clientId: $<HTMLInputElement>("googleDriveClientId").value.trim(),
         clientSecret: $<HTMLInputElement>("googleDriveClientSecret").value.trim()
@@ -3937,14 +3976,17 @@ $("googleDriveExportConfig").onclick = () => {
         setStatus("导出失败：请填写 OAuth 客户端 ID。");
         return;
       }
-      let authSession = await fetchAuthSessionForExport(exportCredentials.clientId);
-      if (isGoogleDriveLinked(settings) && !isUsableAuthSessionExport(authSession)) {
-        setStatus(
-          "导出失败：当前 Google 登录无法备份。请填写客户端密钥后重新点「连接 Google 账号」完成长期授权，再导出。"
-        );
-        return;
+      let authSession: Awaited<ReturnType<typeof fetchAuthSessionForExport>> | undefined;
+      if (driveOptions.includeAuthSession) {
+        authSession = await fetchAuthSessionForExport(exportCredentials.clientId);
+        if (isGoogleDriveLinked(settings) && !isUsableAuthSessionExport(authSession)) {
+          setStatus(
+            "已勾选敏感导出，但当前 Google 登录无法备份。请填写客户端密钥后重新点「连接 Google 账号」完成长期授权，或不勾选敏感项后导出。"
+          );
+          return;
+        }
       }
-      const json = serializeGoogleDriveConfig(settings, authSession, exportCredentials);
+      const json = serializeGoogleDriveConfig(settings, authSession, exportCredentials, driveOptions);
       const blob = new Blob([json], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -3955,10 +3997,8 @@ $("googleDriveExportConfig").onclick = () => {
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      const detail = describeGoogleDriveConfigExport(authSession);
-      setStatus(
-        `Google 云端配置已导出（${detail}）此文件含 ID、密钥与登录信息，请勿分享或上传到公开位置。`
-      );
+      const detail = describeGoogleDriveConfigExport(driveOptions, authSession);
+      setStatus(`Google 云端配置已导出（${detail}）`);
     } catch (e) {
       setStatus(friendlyError(e instanceof Error ? e.message : String(e)));
     }

@@ -4,6 +4,7 @@ import {
   directoryPickerUnavailableMessage,
   supportsDirectoryPicker
 } from "../src/download-directory";
+import { isAllowedDownloadUrl } from "../src/download-save";
 import {
   buildDownloadPath,
   DEFAULT_DOWNLOAD_FOLDER,
@@ -53,5 +54,17 @@ describe("download path", () => {
     expect(isProtectedFolderPickError(new Error("无法打开此文件夹，因为它中含有系统文件"))).toBe(true);
     expect(isProtectedFolderPickError(new Error("permission denied"))).toBe(false);
     expect(friendlyProtectedFolderPickError()).toContain("使用下载文件夹");
+  });
+});
+
+describe("download URL allowlist", () => {
+  it("allows common download schemes", () => {
+    expect(isAllowedDownloadUrl("https://example.com/a.mp3")).toBe(true);
+    expect(isAllowedDownloadUrl("blob:https://example.com/uuid")).toBe(true);
+  });
+
+  it("blocks dangerous schemes", () => {
+    expect(isAllowedDownloadUrl("javascript:alert(1)")).toBe(false);
+    expect(isAllowedDownloadUrl("file:///etc/passwd")).toBe(false);
   });
 });

@@ -14,7 +14,11 @@ import {
 } from "./extension-storage";
 import { openHelpPage } from "./help-nav";
 import { handleGoogleDriveMessage } from "./google-drive/sw-handlers";
-import { saveDownloadBlobFromStaging, saveUrlWithChromeDownloads } from "./download-save";
+import {
+  isAllowedDownloadUrl,
+  saveDownloadBlobFromStaging,
+  saveUrlWithChromeDownloads
+} from "./download-save";
 import { updateSessionAutoName, updateSessionDisplayName } from "./session-display-name";
 
 let creating: Promise<void> | undefined;
@@ -258,6 +262,9 @@ chrome.runtime.onMessage.addListener((msg: Request, _sender, reply) => {
     if (msg.type === MessageType.SaveDownloadUrl) {
       const payload = msg.payload || {};
       const url = String(payload.url || "");
+      if (!isAllowedDownloadUrl(url)) {
+        throw new Error("不允许的下载 URL");
+      }
       const filename = String(payload.filename || "download");
       const downloadFolder =
         typeof payload.downloadFolder === "string" ? payload.downloadFolder : undefined;
