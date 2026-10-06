@@ -133,13 +133,11 @@ SafeCallRecorder 可将 MP3 上传到 **Google Drive**（用户自己的 Google 
 
 
 
-- `drive.file`：仅访问本应用创建或用户通过本应用打开的文件/文件夹（上传 MP3、默认/新建文件夹）
+- `drive.file`：上传文件到你选择/创建的文件夹
+
+- `drive.readonly`：浏览文件夹以便选择目标目录（方案 B：保留，方便指定任意已有文件夹）
 
 - `userinfo.email`：显示已连接的 Google 账号邮箱
-
-- 不再申请 `drive.readonly`，无法浏览你整个云端硬盘。文件夹选择器主要显示本应用创建的目录。
-
-- 若你以前授权过旧版（含 readonly），请在 [Google 账号 → 第三方应用](https://myaccount.google.com/permissions) 撤销本应用后，再在插件里重新「连接 Google 账号」，新令牌才会只含上述最小权限。
 
 - 录音原始数据仍保存在本机 IndexedDB；只有 MP3 会上传到 Google Drive
 

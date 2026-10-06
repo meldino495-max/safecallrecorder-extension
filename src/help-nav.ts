@@ -1,4 +1,4 @@
-export const HELP_CONTENT_VERSION = "1.4.67";
+export const HELP_CONTENT_VERSION = "1.4.68";
 
 export async function openHelpPage(hash = ""): Promise<void> {
   const raw = hash.replace(/^#/, "").trim();

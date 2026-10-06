@@ -3,10 +3,12 @@ import { readFileSync } from "node:fs";
 import { DRIVE_SCOPES } from "../src/google-drive/config";
 
 describe("Google Drive OAuth scopes", () => {
-  it("uses least-privilege drive.file without drive.readonly", () => {
-    expect(DRIVE_SCOPES).toContain("https://www.googleapis.com/auth/drive.file");
-    expect(DRIVE_SCOPES).toContain("https://www.googleapis.com/auth/userinfo.email");
-    expect(DRIVE_SCOPES).not.toContain("https://www.googleapis.com/auth/drive.readonly");
+  it("keeps drive.file, drive.readonly, and userinfo.email", () => {
+    expect(DRIVE_SCOPES).toEqual([
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ]);
   });
 
   it("manifest oauth2 scopes match runtime DRIVE_SCOPES", () => {

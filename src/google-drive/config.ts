@@ -4,9 +4,14 @@ import type { AppSettings } from "../types";
 export const DRIVE_API = "https://www.googleapis.com/drive/v3";
 export const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 
-/** Least privilege: only files/folders this app creates or the user opens with the app. */
+/**
+ * drive.file: upload / manage files this app creates.
+ * drive.readonly: browse existing Drive folders so the user can pick any target directory.
+ * userinfo.email: show connected account email.
+ */
 export const DRIVE_SCOPES = [
   "https://www.googleapis.com/auth/drive.file",
+  "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/userinfo.email"
 ] as const;
 
