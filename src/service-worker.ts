@@ -19,6 +19,7 @@ import {
   saveDownloadBlobFromStaging,
   saveUrlWithChromeDownloads
 } from "./download-save";
+import { isTrustedExtensionSender } from "./ipc-guard";
 import { updateSessionAutoName, updateSessionDisplayName } from "./session-display-name";
 
 let creating: Promise<void> | undefined;
@@ -193,10 +194,13 @@ const FORWARD = new Set<string>([
   MessageType.GetMp3Url
 ]);
 
-chrome.runtime.onMessage.addListener((msg: Request, _sender, reply) => {
+chrome.runtime.onMessage.addListener((msg: Request, sender, reply) => {
   (async () => {
     if (msg.type === MessageType.AudioLevelUpdate) return;
     if (msg.target !== "service-worker") return;
+    if (!isTrustedExtensionSender(sender)) {
+      return reply(failure(msg, "service-worker", new Error("拒绝未信任来源的消息")));
+    }
 
     if (msg.type === MessageType.StorageGet) {
       const data = await storageGetDirect(msg.payload?.keys as string | string[] | Record<string, unknown>);

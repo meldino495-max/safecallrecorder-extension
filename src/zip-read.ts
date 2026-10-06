@@ -46,6 +46,14 @@ export function readStoreZip(input: ArrayBuffer | ArrayBufferView): Map<string, 
     if (nameEnd > len) throw new Error("ZIP 中央目录损坏");
     const name = new TextDecoder().decode(bytes.subarray(nameStart, nameEnd));
     pos = nameEnd + extraLen + commentLen;
+    if (
+      !name ||
+      name.startsWith("/") ||
+      name.includes("\\") ||
+      name.split("/").some((part) => part === "..")
+    ) {
+      throw new Error(`ZIP 条目路径非法: ${name || "(空)"}`);
+    }
 
     if (localOffset + 30 > len || view.getUint32(localOffset, true) !== LOCAL_SIG) {
       throw new Error(`ZIP 本地头损坏: ${name}`);

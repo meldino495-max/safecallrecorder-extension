@@ -8,6 +8,7 @@ import { clearRecordingHistory, deleteRecordingSession } from "./recording-delet
 import { recordings } from "./recording-manager";
 import { recoverIncomplete } from "./recovery-manager";
 import { storage } from "./storage-manager";
+import { isTrustedExtensionSender } from "./ipc-guard";
 import { MessageType, type Request, failure } from "./messages";
 import { StreamLevelMonitor, type AudioLevelUpdate } from "./stream-level-monitor";
 import { AudioLevelConfig } from "./audio-level-config";
@@ -51,11 +52,14 @@ async function loadSettings(): Promise<AppSettings> {
   return normalizeSettings(await getSettings());
 }
 
-chrome.runtime.onMessage.addListener((m: Request | AudioLevelUpdate, _sender, reply) => {
+chrome.runtime.onMessage.addListener((m: Request | AudioLevelUpdate, sender, reply) => {
   if ("type" in m && m.type === MessageType.AudioLevelUpdate) return;
   const req = m as Request;
   (async () => {
     if (req.target !== "offscreen") return;
+    if (!isTrustedExtensionSender(sender)) {
+      return reply(failure(req, "offscreen", new Error("拒绝未信任来源的消息")));
+    }
     const p = req.payload || {};
 
     if (req.type === MessageType.StartRecording) {

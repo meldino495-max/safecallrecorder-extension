@@ -19,7 +19,7 @@ function hasDownloadsApi(): boolean {
   return Boolean(chrome?.downloads?.download);
 }
 
-/** URLs allowed for chrome.downloads from the service worker (blocks file/javascript). */
+/** URLs allowed for chrome.downloads from the service worker (blocks file/javascript/http). */
 export function isAllowedDownloadUrl(url: string): boolean {
   const trimmed = url.trim();
   if (!trimmed) return false;
@@ -27,7 +27,6 @@ export function isAllowedDownloadUrl(url: string): boolean {
     const parsed = new URL(trimmed);
     return (
       parsed.protocol === "https:" ||
-      parsed.protocol === "http:" ||
       parsed.protocol === "blob:" ||
       parsed.protocol === "chrome-extension:"
     );

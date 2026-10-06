@@ -1325,10 +1325,11 @@ function renderRecordingNameChips(items: RecordingNameItem[]) {
       const n = counts[item.kind];
       const sameKindTotal = items.filter((i) => i.kind === item.kind).length;
       const label = sameKindTotal > 1 ? `${recNameKindLabel(item.kind)} ${n}` : recNameKindLabel(item.kind);
-      return `<div class="rec-name-chip included${item.kind === "space" ? " rec-name-chip-space" : ""}" data-id="${item.id}" data-part="${item.kind}">
+      const safeId = escapeAttr(item.id);
+      return `<div class="rec-name-chip included${item.kind === "space" ? " rec-name-chip-space" : ""}" data-id="${safeId}" data-part="${item.kind}">
         <button type="button" class="rec-name-grip" aria-label="拖动调整顺序" draggable="true">⠿</button>
-        <span class="rec-name-chip-label">${label}</span>
-        <button type="button" class="rec-name-remove" data-remove-id="${item.id}" aria-label="去掉${label}">×</button>
+        <span class="rec-name-chip-label">${escapeHtml(label)}</span>
+        <button type="button" class="rec-name-remove" data-remove-id="${safeId}" aria-label="去掉${escapeAttr(label)}">×</button>
       </div>`;
     })
     .join("");
@@ -1348,12 +1349,14 @@ function renderRecordingNameFields(items: RecordingNameItem[]) {
         const label = same.number > 1 ? `起始编号 ${counts.number}` : "起始编号";
         const cycleLabel = same.number > 1 ? `一轮最大值 ${counts.number}` : "一轮最大值";
         const cycleVal = item.numberCycleMax != null && item.numberCycleMax > 0 ? String(item.numberCycleMax) : "";
+        const safeId = escapeAttr(item.id);
+        const seed = Number.isFinite(Number(item.numberSeed)) ? String(Math.floor(Number(item.numberSeed))) : "1";
         return `<div class="rec-name-extra rec-name-number-block">
-          <label>${label}
-            <input id="rec-name-number-${item.id}" type="number" min="0" max="999999" step="1" value="${item.numberSeed ?? 1}">
+          <label>${escapeHtml(label)}
+            <input id="rec-name-number-${safeId}" type="number" min="0" max="999999" step="1" value="${escapeAttr(seed)}">
           </label>
-          <label>${cycleLabel}
-            <input id="rec-name-cycle-${item.id}" type="number" min="1" max="999999" step="1" value="${cycleVal}" placeholder="不限制（留空）">
+          <label>${escapeHtml(cycleLabel)}
+            <input id="rec-name-cycle-${safeId}" type="number" min="1" max="999999" step="1" value="${escapeAttr(cycleVal)}" placeholder="不限制（留空）">
           </label>
           <p class="hint rec-name-number-hint"><strong>一轮最大值</strong>：例如填 8，编号到 8 后下一天回到 1。留空则一直递增（1、2、3…）。</p>
         </div>`;
@@ -1362,9 +1365,10 @@ function renderRecordingNameFields(items: RecordingNameItem[]) {
         counts.custom += 1;
         const label = same.custom > 1 ? `自定义文字 ${counts.custom}` : "自定义文字";
         const value = escapeAttr(item.text ?? "");
+        const safeId = escapeAttr(item.id);
         return `<div class="rec-name-extra">
-          <label>${label}
-            <input id="rec-name-custom-${item.id}" type="text" maxlength="80" placeholder="例如：VK通话" autocomplete="off" spellcheck="false" autocapitalize="off" value="${value}">
+          <label>${escapeHtml(label)}
+            <input id="rec-name-custom-${safeId}" type="text" maxlength="80" placeholder="例如：VK通话" autocomplete="off" spellcheck="false" autocapitalize="off" value="${value}">
           </label>
         </div>`;
       }

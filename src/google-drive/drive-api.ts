@@ -25,9 +25,35 @@ async function fetchDrive(
   });
 }
 
+function sanitizeDriveId(id: string | undefined): string | undefined {
+  const trimmed = id?.trim();
+  if (!trimmed) return undefined;
+  // Drive file IDs are alphanumeric with _ and -; reject quote/query injection.
+  if (!/^[A-Za-z0-9_-]{6,256}$/.test(trimmed)) {
+    throw new Error("无效的 Google Drive 文件夹 ID。");
+  }
+  return trimmed;
+}
+
+function isTrustedGoogleUploadUrl(uploadUrl: string): boolean {
+  try {
+    const parsed = new URL(uploadUrl);
+    if (parsed.protocol !== "https:") return false;
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === "www.googleapis.com" ||
+      host.endsWith(".googleapis.com") ||
+      host.endsWith(".googleusercontent.com")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function listDriveFolders(parentId?: string): Promise<DriveFolder[]> {
-  const q = parentId
-    ? `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+  const safeParent = sanitizeDriveId(parentId);
+  const q = safeParent
+    ? `'${safeParent}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
     : `mimeType='application/vnd.google-apps.folder' and trashed=false and 'root' in parents`;
   const url = `${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name,parents)&pageSize=100&orderBy=folder,name`;
   const res = await fetchDrive(url, {}, false);
@@ -44,7 +70,8 @@ export async function createDriveFolder(name: string, parentId?: string): Promis
     name,
     mimeType: "application/vnd.google-apps.folder"
   };
-  if (parentId) body.parents = [parentId];
+  const safeParent = sanitizeDriveId(parentId);
+  if (safeParent) body.parents = [safeParent];
   const res = await fetchDrive(`${DRIVE_API}/files`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -59,9 +86,13 @@ export async function createDriveFolder(name: string, parentId?: string): Promis
 }
 
 export async function ensureDefaultDriveFolder(): Promise<DriveFolder> {
-  const existing = await listDriveFolders();
-  const found = existing.find((f) => f.name === "SafeCallRecorder");
-  if (found) return found;
+  try {
+    const existing = await listDriveFolders();
+    const found = existing.find((f) => f.name === "SafeCallRecorder");
+    if (found) return found;
+  } catch {
+    // drive.file may not list unrelated folders; create below.
+  }
   return createDriveFolder("SafeCallRecorder");
 }
 
@@ -72,12 +103,14 @@ export async function uploadDriveFile(
   folderId: string,
   onProgress?: (loaded: number, total: number) => void
 ): Promise<{ id: string; name: string; webViewLink?: string }> {
+  const safeFolder = sanitizeDriveId(folderId);
+  if (!safeFolder) throw new Error("缺少有效的 Google Drive 文件夹 ID。");
   const init = await fetchDrive(`${DRIVE_UPLOAD}/files?uploadType=resumable&fields=id,name,webViewLink`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       name: fileName,
-      parents: [folderId],
+      parents: [safeFolder],
       mimeType
     })
   }, false);
@@ -87,6 +120,9 @@ export async function uploadDriveFile(
   }
   const uploadUrl = init.headers.get("Location");
   if (!uploadUrl) throw new Error("Google Drive 未返回上传地址");
+  if (!isTrustedGoogleUploadUrl(uploadUrl)) {
+    throw new Error("Google Drive 返回了不可信的上传地址，已中止。");
+  }
 
   const file = await putBlobWithProgress(uploadUrl, blob, mimeType, onProgress);
   return file;

@@ -13,12 +13,11 @@
     "@types/node": "^26.1.1",
     "esbuild": "^0.28.2",
     "fake-indexeddb": "^6.2.5",
-    "happy-dom": "^20.11.0",
+    "happy-dom": "^20.14.5",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   },
   "dependencies": {
-    "@breezystack/lamejs": "^1.2.7",
     "lamejs": "^1.2.1"
   }
 }

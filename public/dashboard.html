@@ -463,7 +463,7 @@
               <li>保存密钥后，点 <strong>连接 Google 账号</strong> <strong>重新授权一次</strong>（底部会提示「请重新点连接以启用长期自动续期」）</li>
               <li>成功后界面显示：<strong>「Google 已长期授权，上传时会自动续期令牌」</strong></li>
             </ol>
-            <p class="google-drive-where google-drive-where-warn"><strong>安全提示：</strong>客户端密钥相当于应用密码，请勿发到公开群或上传到 GitHub。导出云端配置<strong>会包含</strong> ID、密钥与登录状态，换浏览器导入后通常<strong>无需再登录 Google</strong>；请仅保存在本机私密位置。</p>
+            <p class="google-drive-where google-drive-where-warn"><strong>安全提示：</strong>客户端密钥相当于应用密码，请勿发到公开群或上传到 GitHub。默认导出<strong>不含</strong>密钥与登录令牌；勾选设置中的敏感导出后才会写入，换浏览器导入后通常无需再登录 Google。请仅保存在本机私密位置。</p>
           </div>
         </details>
 
@@ -510,6 +510,7 @@
           <button type="button" id="googleDrivePickFolder" class="btn outline small">选择 Drive 文件夹</button>
           <button type="button" id="googleDriveUseDefaultFolder" class="btn outline small">使用默认文件夹</button>
         </div>
+        <p class="hint">云端权限为 <code>drive.file</code>（最小权限）：列表主要显示本应用创建的文件夹。推荐点「使用默认文件夹」，或在选择对话框里新建子文件夹。若曾用旧版授权过更广权限，请到 Google 账号撤销本应用后重新连接。</p>
         <p id="googleDriveFolderLabel" class="google-drive-label">当前文件夹：未选择</p>
         <label class="row">上传方式
           <select id="googleDriveUploadMode">
@@ -524,7 +525,7 @@
           <button type="button" id="googleDriveClearConfig" class="btn danger outline small">清空云端配置</button>
           <input type="file" id="googleDriveImportConfigFile" accept=".json,application/json" hidden>
         </div>
-        <p class="hint">换浏览器：先<strong>导出云端配置</strong>（含客户端 ID、密钥与登录状态），在新浏览器<strong>导入</strong>后通常可直接上传，无需再点「连接 Google 账号」（须已启用长期授权且 refresh token 仍有效）。也可用 ⚙ 设置里的<strong>导出/导入全部设置</strong>一并迁移其他选项。</p>
+        <p class="hint">换浏览器：先<strong>导出云端配置</strong>（默认不含密钥/令牌；若需免重新登录请勾选设置中的敏感导出），在新浏览器<strong>导入</strong>。未含令牌时需再点「连接 Google 账号」。也可用 ⚙ 设置里的<strong>导出/导入全部设置</strong>一并迁移其他选项。</p>
         <p class="hint"><strong>断开连接</strong>仅清除登录；<strong>清空云端配置</strong>会清除 ID、密钥、登录与文件夹（「启用 Google Drive 上传」勾选不变）。</p>
         <p class="hint warning">配置文件含客户端密钥与登录令牌，等同于账号权限，请勿分享、邮件发送或上传到公开网盘。</p>
         <p class="hint">启用后，MP3 生成完成会自动上传到你选择的 Google Drive 文件夹。历史记录里也可手动点「上传云端」。</p>

@@ -1,7 +1,9 @@
-export const HELP_CONTENT_VERSION = "1.4.65";
+export const HELP_CONTENT_VERSION = "1.4.67";
 
 export async function openHelpPage(hash = ""): Promise<void> {
-  const clean = hash.replace(/^#/, "");
+  const raw = hash.replace(/^#/, "").trim();
+  // Only allow fragment identifiers used in help.html (no open-redirect / odd chars).
+  const clean = /^[A-Za-z0-9_./-]{0,120}$/.test(raw) ? raw : "";
   const base = chrome.runtime.getURL("help.html");
   const target = clean ? `${base}#${clean}` : base;
   const existing = await chrome.tabs.query({ url: `${base}*` });

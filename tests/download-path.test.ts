@@ -66,5 +66,6 @@ describe("download URL allowlist", () => {
   it("blocks dangerous schemes", () => {
     expect(isAllowedDownloadUrl("javascript:alert(1)")).toBe(false);
     expect(isAllowedDownloadUrl("file:///etc/passwd")).toBe(false);
+    expect(isAllowedDownloadUrl("http://example.com/a.mp3")).toBe(false);
   });
 });
