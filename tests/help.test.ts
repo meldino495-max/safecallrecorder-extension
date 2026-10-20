@@ -65,7 +65,7 @@ describe("help system", () => {
     expect(html).toContain("导入云端配置");
     expect(html).toContain("导出全部设置");
     expect(html).toContain("清空云端配置");
-    expect(html).toContain("步骤 0");
+    expect(html).toContain("连接 Drive");
     expect(html).toContain("复制重定向 URI");
     expect(html).toContain("扩展为什么突然从浏览器消失");
     expect(html).toContain("仅上传云端");

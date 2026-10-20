@@ -171,6 +171,12 @@ export interface AppSettings {
   customDownloadDirectoryName?: string;
   /** Enable uploading MP3 to Google Drive. */
   googleDriveEnabled?: boolean;
+  /**
+   * Which connect UI is selected in the dashboard.
+   * Checking a mode enables Drive; null/absent disables it.
+   * Persist null (not undefined) so a previous mode is cleared in storage.
+   */
+  googleDriveConnectMode?: "builtin" | "custom" | null;
   /** local_and_cloud = save locally + upload; cloud_only = auto upload without local save. */
   googleDriveUploadMode?: "local_and_cloud" | "cloud_only";
   /** Auto upload MP3 to Drive when stop recording and MP3 is ready. */

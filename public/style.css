@@ -591,6 +591,7 @@ input[type="text"]:focus, select:focus {
 .btn.start:hover:not(:disabled) { background: #0f766e; }
 .btn.stop { background: var(--danger); color: #fff; }
 .btn.stop:hover:not(:disabled) { background: #b91c1c; }
+.btn.primary { background: #0f766e; color: #fff; }
 .btn.secondary { background: #0f766e; color: #fff; }
 .btn.outline { background: #fff; border: 1px solid var(--line); color: #334155; }
 .btn.danger.outline { border-color: #fecaca; color: var(--danger); }
@@ -854,11 +855,75 @@ input[type="text"]:focus, select:focus {
   color: #1d4ed8;
 }
 .google-drive-panel { margin-top: 8px; }
+.google-drive-mode-toggle { margin-top: 4px; }
+.google-drive-mode-panel {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+}
+.google-drive-shared-panel {
+  margin-top: 12px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
 .google-drive-actions, .google-drive-folder-row {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
+}
+.google-drive-actions-primary {
+  align-items: center;
+  margin-bottom: 12px;
+}
+.google-drive-connect-btn,
+.google-drive-connect-custom-btn {
+  min-width: 140px;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 10px 14px;
+}
+.google-drive-oauth-fields {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+.google-drive-oauth-fields .google-drive-client-row { margin-bottom: 8px; }
+.google-drive-oauth-fields .hint { margin: 0 0 8px; }
+.google-drive-offline-auth {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+.google-drive-offline-auth .hint { margin: 0 0 8px; }
+.google-drive-offline-auth .google-drive-client-row { margin-bottom: 8px; }
+.google-drive-advanced {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+.google-drive-advanced-summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #475569;
+}
+.google-drive-advanced-summary::-webkit-details-marker { display: none; }
+.google-drive-advanced-summary::before { content: "▸ "; }
+.google-drive-advanced[open] > .google-drive-advanced-summary::before { content: "▾ "; }
+.google-drive-advanced-body {
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--line);
 }
 .google-drive-label {
   margin: 0 0 10px;

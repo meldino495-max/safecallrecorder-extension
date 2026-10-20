@@ -197,11 +197,11 @@ export function formatBitrateHistory(bitrate: number, hasMp3: boolean | undefine
 /**
  * Capture WebM/Opus must not be lower than the user's MP3 target,
  * otherwise raising export bitrate cannot recover lost detail.
- * Floor at 96 kbps for safety on low targets (e.g. 16/32).
+ * Floor at 128 kbps so the source stays clean even when the MP3 target is low.
  */
 export function captureAudioBitsPerSecond(targetMp3Bitrate: number): number {
   const target = resolveBitrate(targetMp3Bitrate);
-  return Math.max(target, 96000);
+  return Math.max(target, 128000);
 }
 
 /** @deprecated Use BITRATE_PRESETS */

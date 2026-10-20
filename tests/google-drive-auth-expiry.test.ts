@@ -18,19 +18,21 @@ describe("google drive auth expiry hint", () => {
 
   it("shows long-term hint when refresh token active", () => {
     const hint = formatGoogleAuthExpiryHint(null, { hasRefreshToken: true });
-    expect(hint).toContain("长期授权");
+    expect(hint).toContain("离线长期续期");
+    expect(hint).toContain("退出浏览器 Google");
   });
 
   it("warns when under 15 minutes", () => {
     const hint = formatGoogleAuthExpiryHint(now + 10 * 60_000, { now });
     expect(hint).toContain("10 分钟");
-    expect(hint).toContain("自动刷新");
+    expect(hint).toContain("客户端密钥");
     expect(isGoogleAuthExpiryWarning(now + 10 * 60_000, now)).toBe(true);
   });
 
-  it("shows hours and minutes when long-lived", () => {
+  it("shows hours and minutes when short-lived", () => {
     const hint = formatGoogleAuthExpiryHint(now + 90 * 60_000, { now });
     expect(hint).toContain("1 小时 30 分钟");
+    expect(hint).toContain("长期自动续期");
     expect(isGoogleAuthExpiryWarning(now + 90 * 60_000, now)).toBe(false);
   });
 });

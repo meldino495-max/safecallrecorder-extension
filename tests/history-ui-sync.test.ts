@@ -29,6 +29,7 @@ describe("history UI sync after delete/clear", () => {
   it("clear uses deletedSessionIds to update UI", () => {
     expect(dashboard).toContain("removeSessionsFromUi(deletedIds)");
     expect(dashboard).toContain("已清空全部录音历史");
+    expect(dashboard).toContain("请刷新页面后，历史记录才会从列表中消失。");
     expect(deletion).toContain("deletedSessionIds");
     expect(deletion).toContain("skippedSessionIds");
     expect(deletion).toContain("failedSessions");
@@ -67,6 +68,8 @@ describe("history UI sync after delete/clear", () => {
     expect(dashboard).toContain("history-export-bitrate");
     expect(dashboard).toContain("导出MP3");
     expect(dashboard).toContain("overrideBitrate: target");
+    expect(dashboard).toContain("exportDisplayNameWithBitrate");
+    expect(dashboard).toContain("Always re-encode at the dropdown bitrate");
     expect(dashboard).toContain("BITRATE_PRESETS");
   });
 

@@ -55,6 +55,17 @@ await Promise.all([
 
 await cp("public", STAGING, { recursive: true });
 await copyFile("node_modules/lamejs/lame.min.js", join(STAGING, "lame.min.js"));
+{
+  const { readFile, writeFile } = await import("node:fs/promises");
+  const lamePath = join(STAGING, "lame.min.js");
+  const lame = await readFile(lamePath, "utf8");
+  const patched = lame.replace(
+    "q.quality=3;q.bWriteVbrTag=!1;q.disable_reservoir=!0;",
+    "q.quality=2;q.bWriteVbrTag=!1;q.disable_reservoir=!1;"
+  );
+  if (patched === lame) throw new Error("lame.min.js quality patch did not match");
+  await writeFile(lamePath, patched);
+}
 await Promise.all([
   rm(join(STAGING, "popup.html"), { force: true }),
   rm(join(STAGING, "popup.js"), { force: true }),

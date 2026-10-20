@@ -55,8 +55,8 @@ describe("bitrate presets", () => {
   });
 
   it("keeps capture quality at or above target and floors low targets", () => {
-    expect(captureAudioBitsPerSecond(16000)).toBe(96000);
+    expect(captureAudioBitsPerSecond(16000)).toBe(128000);
     expect(captureAudioBitsPerSecond(128000)).toBe(128000);
-    expect(captureAudioBitsPerSecond(64000)).toBe(96000);
+    expect(captureAudioBitsPerSecond(64000)).toBe(128000);
   });
 });

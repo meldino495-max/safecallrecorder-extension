@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SafeCallRecorder",
-  "version": "1.4.68",
+  "version": "1.4.76",
   "description": "本机保存的网页和声音输入设备录音工具，可选上传到 Google Drive。",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvZP8mcI3IsxvlzSBkc7yfA1ksA30JG4QLzLTQlYA2BEfmNrwFJLF/kOYSH6LrNKh27k2HYI4tzDHVXL4RWo93HVBNxoI1kPBRcPps1wRxyFU+RurzlT/NFtZ5wPxs7oeA78/bwB/kXHAn4RtgzQ/gBYPfELwXn5N7MRVR/iKugOCpm9pdWz5NiBmVJxSe2k1TXir7yH0Y6bRLEUtOftnrM0Oz2+N8962x2Z+Qeu+UwT+ht2hJ1X5Nd1CmrQVEIBfWhyqa1mbwAZI3gf3P01hFRJ0442AYrDtX8WnqSmv5vSyAXRa/Oh20x7E37G4PAyEq7zmefc0EZT6WdIBdNyeswIDAQAB",
   "permissions": [
@@ -14,21 +14,36 @@
     "tabs",
     "identity"
   ],
-  "host_permissions": ["https://www.googleapis.com/*"],
+  "host_permissions": [
+    "https://www.googleapis.com/*"
+  ],
   "oauth2": {
-    "client_id": "CONFIGURE_IN_GOOGLE_CLOUD.apps.googleusercontent.com",
+    "client_id": "711099791446-pjmd0dgjr7lp0suib9michga09p9b5hn.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/drive.file",
-      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/drive.metadata.readonly",
       "https://www.googleapis.com/auth/userinfo.email"
     ]
   },
-  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
   "action": {
     "default_title": "打开 SafeCallRecorder",
-    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
   },
-  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "web_accessible_resources": [],
   "minimum_chrome_version": "116"
 }

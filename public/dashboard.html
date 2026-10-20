@@ -74,6 +74,8 @@
       <p class="hint">请确保所选设备能收到播放声音（例如 VoiceMeeter Out B1）。</p>
       <button type="button" id="showOnboardingAgain" class="btn outline small">重新显示新手引导</button>
       <p class="hint">隐私：录音只保存在本机浏览器存储中，不会上传。</p>
+      <button type="button" id="resetAllSettings" class="btn danger outline">重置所有设置</button>
+      <p class="hint">恢复下载方式、比特率、自动录音、命名方案、保存路径和 Google 云端连接。不会删除录音历史。</p>
       <button type="button" id="clearAll" class="btn danger outline">清理所有历史录音</button>
     </div>
 
@@ -261,22 +263,48 @@
 
     <section class="card google-drive-card">
       <h2>Google 云端上传</h2>
-      <label class="row google-drive-toggle">
-        <span>启用 Google Drive 上传</span>
-        <input type="checkbox" id="googleDriveEnabled">
+      <p class="hint" id="googleDriveModePickHint">勾选一种方式后展开对应设置；不会自动弹出 Google 登录，需再点「连接」。</p>
+      <label class="row google-drive-mode-toggle">
+        <span>连接 Drive（内置）</span>
+        <input type="checkbox" id="googleDriveModeBuiltin">
       </label>
-      <div class="google-drive-setup-guide hidden" id="googleDriveSetupGuide">
-        <p class="hint warning google-drive-save-reminder" role="note"><strong>⚠ 请及时保存客户端 ID 与客户端密钥</strong><br>Google Cloud 点「创建」后，弹窗里的<strong>客户端 ID</strong>和<strong>客户端密钥（GOCSPX-…）</strong>请<strong>立刻复制到记事本或密码管理器</strong>。密钥<strong>只显示一次</strong>，关闭弹窗后无法再看完整内容；丢失密钥只能「添加密钥」重新生成，并需重新连接 Google 账号。</p>
-        <label class="google-drive-client-row">
-          <span>OAuth 客户端 ID</span>
-          <input type="text" id="googleDriveClientId" class="google-drive-input" placeholder="123456789-xxxx.apps.googleusercontent.com" autocomplete="off" spellcheck="false">
-        </label>
-        <label class="google-drive-client-row">
-          <span>OAuth 客户端密钥</span>
-          <input type="password" id="googleDriveClientSecret" class="google-drive-input" placeholder="GOCSPX-…（可选，用于长期授权）" autocomplete="off" spellcheck="false">
-        </label>
-        <p class="hint google-drive-client-hint">首次配置请展开下方 <strong>Google Cloud 详细配置教程</strong>，从 <strong>步骤 0</strong> 复制扩展 ID 与重定向 URI。Google Cloud 创建完成后，把 <strong>客户端 ID / 密钥</strong> 粘贴到上方输入框（自动保存）。</p>
+      <label class="row google-drive-mode-toggle">
+        <span>用自建客户端连接 Drive</span>
+        <input type="checkbox" id="googleDriveModeCustom">
+      </label>
+      <p class="hint">「连接 Drive（内置）」最多 100 人。若失效（例如超出用户数上限、无法授权），请改用「用自建客户端连接 Drive」。</p>
+      <!-- Keep for legacy scripts / tests that still look up enable flag via JS settings -->
+      <input type="checkbox" id="googleDriveEnabled" class="hidden" tabindex="-1" aria-hidden="true">
+      <p id="googleDriveSetupHint" class="hint hidden"></p>
 
+      <div id="googleDriveBuiltinPanel" class="google-drive-mode-panel hidden">
+        <p class="hint">使用发行包内置 OAuth。点下方按钮才会打开 Google 授权窗口。</p>
+        <div class="google-drive-actions">
+          <button type="button" id="googleDriveConnect" class="btn primary google-drive-connect-btn">连接 Drive</button>
+          <button type="button" id="googleDriveDisconnectBuiltin" class="btn outline small google-drive-disconnect-btn hidden">断开</button>
+        </div>
+      </div>
+
+      <div id="googleDriveCustomPanel" class="google-drive-mode-panel hidden">
+        <div id="googleDriveOAuthFields" class="google-drive-oauth-fields">
+          <p class="hint warning google-drive-save-reminder" role="note"><strong>⚠ 自建客户端：请及时保存 ID 与密钥</strong><br>Google Cloud 点「创建」后，弹窗里的<strong>客户端 ID</strong>和<strong>客户端密钥（GOCSPX-…）</strong>请<strong>立刻复制</strong>。密钥<strong>只显示一次</strong>；丢失只能「添加密钥」重新生成，并需重新连接。</p>
+          <label class="google-drive-client-row">
+            <span>OAuth 客户端 ID（自建）</span>
+            <input type="text" id="googleDriveClientId" class="google-drive-input" placeholder="123456789-xxxx.apps.googleusercontent.com" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="google-drive-client-row">
+            <span>OAuth 客户端密钥（自建，可选）</span>
+            <input type="password" id="googleDriveClientSecret" class="google-drive-input" placeholder="GOCSPX-…（可选，用于长期授权）" autocomplete="off" spellcheck="false">
+          </label>
+          <p class="hint google-drive-client-hint">先展开下方教程完成配置，再粘贴 ID/密钥，然后点「连接 Drive」。</p>
+        </div>
+        <div class="google-drive-actions">
+          <button type="button" id="googleDriveConnectCustom" class="btn primary google-drive-connect-custom-btn">连接 Drive</button>
+          <button type="button" id="googleDriveDisconnectCustom" class="btn outline small google-drive-disconnect-btn hidden">断开</button>
+        </div>
+        <details class="google-drive-advanced" id="googleDriveAdvanced">
+          <summary class="google-drive-advanced-summary">自建教程 / 离线续期说明 / 导出配置<span class="google-drive-setup-tutor-hint">（可选）</span></summary>
+          <div class="google-drive-advanced-body" id="googleDriveSetupGuide">
         <details class="google-drive-setup-tutor" id="googleDriveSetupTutorial">
           <summary class="google-drive-setup-tutor-summary">Google Cloud 详细配置教程<span class="google-drive-setup-tutor-hint">（点击展开 / 收起）</span></summary>
           <div class="google-drive-setup-tutor-body">
@@ -370,7 +398,7 @@
               <li>回到 <strong>目标对象</strong>，找到 <strong>测试用户</strong>：
                 <ul>
                   <li>点 <strong>添加用户</strong>（或 <strong>+ 添加用户</strong>）</li>
-                  <li>输入你稍后用来「连接 Google 账号」的 Gmail</li>
+                  <li>输入你稍后用来「连接 Drive」的 Gmail</li>
                   <li>点 <strong>添加</strong> → <strong>保存</strong></li>
                 </ul>
               </li>
@@ -460,7 +488,7 @@
                   <li>将密钥粘贴到本插件 <strong>OAuth 客户端密钥</strong> 输入框</li>
                 </ul>
               </li>
-              <li>保存密钥后，点 <strong>连接 Google 账号</strong> <strong>重新授权一次</strong>（底部会提示「请重新点连接以启用长期自动续期」）</li>
+              <li>保存密钥后，点 <strong>连接 Drive</strong> <strong>重新授权一次</strong>（底部会提示「请重新点连接以启用长期自动续期」）</li>
               <li>成功后界面显示：<strong>「Google 已长期授权，上传时会自动续期令牌」</strong></li>
             </ol>
             <p class="google-drive-where google-drive-where-warn"><strong>安全提示：</strong>客户端密钥相当于应用密码，请勿发到公开群或上传到 GitHub。默认导出<strong>不含</strong>密钥与登录令牌；勾选设置中的敏感导出后才会写入，换浏览器导入后通常无需再登录 Google。请仅保存在本机私密位置。</p>
@@ -485,33 +513,45 @@
           <div class="google-drive-setup-body">
             <ol class="google-drive-setup-sublist">
               <li>确认 <strong>OAuth 客户端 ID</strong> 已保存；若需长期授权，确认 <strong>OAuth 客户端密钥</strong> 也已填写</li>
-              <li>勾选 <strong>启用 Google Drive 上传</strong>（保持勾选；「断开连接」不会取消此项）</li>
-              <li>点 <strong>连接 Google 账号</strong></li>
+              <li>保持勾选 <strong>用自建客户端连接 Drive</strong></li>
+              <li>点本页的 <strong>连接 Drive</strong></li>
               <li>在 Google 弹出窗口：选账号 → <strong>继续</strong> → <strong>允许</strong>（若提示「Google 尚未验证此应用」，点 <strong>高级</strong> → <strong>前往 SafeCallRecorder（不安全）</strong>，这是你自建的应用）</li>
-              <li>点 <strong>选择 Drive 文件夹</strong> → 进入目标目录 → <strong>选择当前文件夹</strong>；或点 <strong>使用默认文件夹</strong></li>
+              <li>点 <strong>更换文件夹</strong> → 进入目标目录 → <strong>选择当前文件夹</strong>；或点 <strong>使用默认文件夹</strong></li>
               <li>选上传方式；保持 <strong>停止录音后自动上传 MP3</strong> 勾选即可</li>
             </ol>
           </div>
         </details>
 
-        <p class="hint google-drive-setup-footer">仍有问题？打开插件帮助页「Google 云端上传」。常见错误：① <strong>redirect_uri_mismatch</strong> → 须用「Web 应用」客户端并添加本页显示的重定向 URI；② 粘贴客户端 ID 后变空 → 重新加载扩展后再粘贴；③ 概览页找不到「开始」→ 去<strong>目标对象</strong>配置；④ 访问遭拒 → 在<strong>测试用户</strong>添加你的 Gmail；⑤ 找不到客户端密钥 → 见步骤 4.5「添加密钥」；⑥ 显示已连接但无法上传 → 点「断开连接」后重新「连接 Google 账号」。</p>
+        <p class="hint google-drive-setup-footer">仍有问题？打开插件帮助页「Google 云端上传」。常见错误：① <strong>redirect_uri_mismatch</strong> → 须用「Web 应用」客户端并添加本页显示的重定向 URI；② 粘贴客户端 ID 后变空 → 重新加载扩展后再粘贴；③ 概览页找不到「开始」→ 去<strong>目标对象</strong>配置；④ 访问遭拒 → 在<strong>测试用户</strong>添加你的 Gmail；⑤ 找不到客户端密钥 → 见步骤 4.5「添加密钥」；⑥ 显示已连接但无法上传 → 点「断开」后重新连接。</p>
+          </div>
+        </details>
+
+            <div id="googleDriveOfflineAuth" class="google-drive-offline-auth">
+              <p class="hint">填写客户端密钥并点「连接 Drive」后，可在退出浏览器 Google 账号后仍自动续期。密钥相当于应用密码，请勿外传。</p>
+            </div>
+
+            <div class="google-drive-config-actions">
+              <button type="button" id="googleDriveExportConfig" class="btn outline small">导出云端配置</button>
+              <button type="button" id="googleDriveImportConfig" class="btn outline small">导入云端配置</button>
+              <button type="button" id="googleDriveClearConfig" class="btn danger outline small">清空云端配置</button>
+              <input type="file" id="googleDriveImportConfigFile" accept=".json,application/json" hidden>
+            </div>
+            <p class="hint">换浏览器可导出/导入配置。默认导出不含密钥与令牌；勾选设置中的敏感导出后可免重新登录。</p>
           </div>
         </details>
       </div>
-      <p id="googleDriveSetupHint" class="hint hidden"></p>
-      <div id="googleDrivePanel" class="google-drive-panel hidden">
-        <div class="google-drive-actions">
-          <button type="button" id="googleDriveConnect" class="btn secondary small">连接 Google 账号</button>
-          <button type="button" id="googleDriveDisconnect" class="btn outline small hidden">断开连接</button>
-        </div>
-        <p id="googleDriveAccountLabel" class="google-drive-label">未连接 Google 账号</p>
+
+      <div id="googleDriveSharedPanel" class="google-drive-panel google-drive-shared-panel hidden">
+        <p id="googleDriveAccountLabel" class="google-drive-label">未连接 Drive</p>
         <p id="googleDriveAuthExpiryHint" class="hint google-drive-auth-expiry hidden"></p>
-        <div class="google-drive-folder-row">
-          <button type="button" id="googleDrivePickFolder" class="btn outline small">选择 Drive 文件夹</button>
-          <button type="button" id="googleDriveUseDefaultFolder" class="btn outline small">使用默认文件夹</button>
+        <div class="google-drive-folder-block" id="googleDriveFolderBlock">
+          <p id="googleDriveFolderLabel" class="google-drive-label">上传文件夹：连接后自动使用默认文件夹</p>
+          <p class="hint google-drive-folder-hint">录音上传目标可随时更换，不影响已上传文件。</p>
+          <div class="google-drive-folder-row">
+            <button type="button" id="googleDrivePickFolder" class="btn outline small">更换文件夹</button>
+            <button type="button" id="googleDriveUseDefaultFolder" class="btn outline small">使用默认文件夹</button>
+          </div>
         </div>
-        <p class="hint">可浏览并选择云端硬盘中的已有文件夹，也可「使用默认文件夹」或新建子文件夹。上传仍仅写入你选定的目录。</p>
-        <p id="googleDriveFolderLabel" class="google-drive-label">当前文件夹：未选择</p>
         <label class="row">上传方式
           <select id="googleDriveUploadMode">
             <option value="local_and_cloud">保存本地 + 上传云端</option>
@@ -519,16 +559,6 @@
           </select>
         </label>
         <label class="row"><span>停止录音后自动上传 MP3</span><input type="checkbox" id="googleDriveAutoUploadOnStop" checked></label>
-        <div class="google-drive-config-actions">
-          <button type="button" id="googleDriveExportConfig" class="btn outline small">导出云端配置</button>
-          <button type="button" id="googleDriveImportConfig" class="btn outline small">导入云端配置</button>
-          <button type="button" id="googleDriveClearConfig" class="btn danger outline small">清空云端配置</button>
-          <input type="file" id="googleDriveImportConfigFile" accept=".json,application/json" hidden>
-        </div>
-        <p class="hint">换浏览器：先<strong>导出云端配置</strong>（默认不含密钥/令牌；若需免重新登录请勾选设置中的敏感导出），在新浏览器<strong>导入</strong>。未含令牌时需再点「连接 Google 账号」。也可用 ⚙ 设置里的<strong>导出/导入全部设置</strong>一并迁移其他选项。</p>
-        <p class="hint"><strong>断开连接</strong>仅清除登录；<strong>清空云端配置</strong>会清除 ID、密钥、登录与文件夹（「启用 Google Drive 上传」勾选不变）。</p>
-        <p class="hint warning">配置文件含客户端密钥与登录令牌，等同于账号权限，请勿分享、邮件发送或上传到公开网盘。</p>
-        <p class="hint">启用后，MP3 生成完成会自动上传到你选择的 Google Drive 文件夹。历史记录里也可手动点「上传云端」。</p>
       </div>
     </section>
 

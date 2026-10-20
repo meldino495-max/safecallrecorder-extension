@@ -4,30 +4,30 @@ export function formatGoogleAuthExpiryHint(
   options?: { hasRefreshToken?: boolean; now?: number }
 ): string | null {
   if (options?.hasRefreshToken) {
-    return "Google 已长期授权，上传时会自动续期令牌，无需重复连接。";
+    return "已启用离线长期续期（退出浏览器 Google 账号后仍可自动续期）。";
   }
   const now = options?.now ?? Date.now();
   if (expiresAt == null || !Number.isFinite(expiresAt)) return null;
   const ms = expiresAt - now;
   if (ms <= 0) {
-    return "Google 登录已过期，上传或同步时将自动刷新；若失败请点「连接 Google 账号」。";
+    return "Google 登录已过期，上传或同步时将自动刷新；若失败请点「连接 Drive」。";
   }
   const mins = Math.ceil(ms / 60_000);
   const until = new Date(expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const autoRefresh = "到期后将自动刷新，无需手动重连。";
-  const longTermHint = "填写客户端密钥并重新连接后可长期授权。";
+  const longTermHint = "下方粘贴客户端密钥并重新「连接 Drive」后可长期自动续期。";
   if (mins <= 15) {
-    return `Google 登录约 ${mins} 分钟后过期（${until}），${autoRefresh} ${longTermHint}`;
+    return `短期登录约 ${mins} 分钟后过期（${until}）。${longTermHint}`;
   }
   if (mins < 60) {
-    return `Google 登录剩余约 ${mins} 分钟（有效至 ${until}，${autoRefresh}） ${longTermHint}`;
+    return `短期登录剩余约 ${mins} 分钟（至 ${until}）。${longTermHint}`;
   }
   const hours = Math.floor(mins / 60);
   const remMins = mins % 60;
   if (remMins === 0) {
-    return `Google 登录剩余约 ${hours} 小时（有效至 ${until}，${autoRefresh}） ${longTermHint}`;
+    return `短期登录剩余约 ${hours} 小时（至 ${until}）。${longTermHint}`;
   }
-  return `Google 登录剩余约 ${hours} 小时 ${remMins} 分钟（有效至 ${until}，${autoRefresh}） ${longTermHint}`;
+  return `短期登录剩余约 ${hours} 小时 ${remMins} 分钟（至 ${until}）。${longTermHint}`;
 }
 
 export function isGoogleAuthExpiryWarning(

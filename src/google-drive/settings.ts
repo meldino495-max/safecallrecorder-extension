@@ -49,12 +49,12 @@ export function googleDriveAccountLabel(
   const email = settings.googleDriveAccountEmail?.trim();
   if (email) {
     if (options?.authValid === false) {
-      return `登录已过期：${email}（请点「连接 Google 账号」）`;
+      return `登录已过期：${email}（请点「连接 Drive」）`;
     }
     return `已连接：${email}`;
   }
   if (settings.googleDriveFolderId?.trim()) {
-    return "未连接 Google 账号（已保存文件夹，请点「连接 Google 账号」）";
+    return "未连接（已保存文件夹，请点「连接 Drive」）";
   }
-  return "未连接 Google 账号";
+  return "未连接 Drive";
 }

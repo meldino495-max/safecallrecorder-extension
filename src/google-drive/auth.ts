@@ -1,6 +1,7 @@
 import { getSettings, setSettings, storageGet, storageRemove, storageSet } from "../extension-storage";
 import { MessageType, requestId, type Request, type Response } from "../messages";
 import type { GoogleDriveAuthSessionExport } from "./config-backup";
+import { getBuiltinGoogleOAuthClientId, getBuiltinGoogleOAuthClientSecret } from "./builtin-oauth";
 import {
   DRIVE_SCOPES,
   getGoogleRedirectUri,
@@ -8,6 +9,8 @@ import {
   googleDriveSetupHint,
   resolveGoogleClientId,
   resolveGoogleClientSecretAsync,
+  resolveWebOAuthClientId,
+  usesChromeIdentityAuth,
   usesUiOAuthClientId
 } from "./config";
 import {
@@ -194,7 +197,11 @@ async function getAuthTokenViaImplicitWebAuthFlow(
   return token;
 }
 
-/** Silent refresh with fallbacks when the browser already has a Google session. */
+/**
+ * Acquire a Web OAuth token.
+ * When interactive=false: only cache / refresh-token / silent prompt=none — never open a login window.
+ * Login UI is reserved for explicit「连接 Drive」clicks (interactive=true).
+ */
 async function acquireWebFlowToken(clientId: string, interactive: boolean): Promise<string> {
   const settings = await getSettings();
   const clientSecret = await resolveGoogleClientSecretAsync(settings);
@@ -210,54 +217,40 @@ async function acquireWebFlowToken(clientId: string, interactive: boolean): Prom
       if (refreshed) return refreshed;
     }
 
-    if (interactive) {
-      const needRefreshToken = !cached?.refreshToken;
-      return getAuthTokenViaAuthCodeFlow(clientId, clientSecret, {
-        interactive: true,
-        needRefreshToken,
-        prompt: needRefreshToken ? "consent_select_account" : "select_account"
-      });
-    }
-
-    const codeAttempts: Array<{ interactive: boolean; prompt: WebAuthPrompt; needRefreshToken?: boolean }> = [
-      { interactive: false, prompt: "none" },
-      { interactive: true, prompt: "none" },
-      { interactive: true, prompt: "select_account" },
-      { interactive: true, prompt: "consent_select_account", needRefreshToken: true }
-    ];
-    let lastError: Error | undefined;
-    for (const attempt of codeAttempts) {
+    if (!interactive) {
       try {
-        return await getAuthTokenViaAuthCodeFlow(clientId, clientSecret, attempt);
-      } catch (e) {
-        lastError = e instanceof Error ? e : new Error(String(e));
+        return await getAuthTokenViaAuthCodeFlow(clientId, clientSecret, {
+          interactive: false,
+          prompt: "none"
+        });
+      } catch {
+        throw new Error("Google 登录已失效，请点「连接 Drive」重新授权。");
       }
     }
-    throw lastError ?? new Error("Google 授权失败，请点「连接 Google 账号」。");
-  }
 
-  if (interactive) {
-    return getAuthTokenViaImplicitWebAuthFlow(clientId, {
+    const needRefreshToken = !cached?.refreshToken;
+    return getAuthTokenViaAuthCodeFlow(clientId, clientSecret, {
       interactive: true,
-      prompt: "consent_select_account"
+      needRefreshToken,
+      prompt: needRefreshToken ? "consent_select_account" : "select_account"
     });
   }
 
-  const refreshAttempts: Array<{ interactive: boolean; prompt: WebAuthPrompt }> = [
-    { interactive: false, prompt: "none" },
-    { interactive: true, prompt: "none" },
-    { interactive: true, prompt: "select_account" }
-  ];
-
-  let lastError: Error | undefined;
-  for (const attempt of refreshAttempts) {
+  if (!interactive) {
     try {
-      return await getAuthTokenViaImplicitWebAuthFlow(clientId, attempt);
-    } catch (e) {
-      lastError = e instanceof Error ? e : new Error(String(e));
+      return await getAuthTokenViaImplicitWebAuthFlow(clientId, {
+        interactive: false,
+        prompt: "none"
+      });
+    } catch {
+      throw new Error("Google 登录已失效，请点「连接 Drive」重新授权。");
     }
   }
-  throw lastError ?? new Error("Google 授权失败，请点「连接 Google 账号」。");
+
+  return getAuthTokenViaImplicitWebAuthFlow(clientId, {
+    interactive: true,
+    prompt: "consent_select_account"
+  });
 }
 
 async function getAuthTokenFromManifest(interactive: boolean): Promise<string> {
@@ -290,45 +283,63 @@ async function requestAuthTokenViaServiceWorker(interactive: boolean): Promise<s
   return token;
 }
 
-/** Token acquisition for contexts without chrome.identity (e.g. offscreen document). */
+/**
+ * Dual auth:
+ * 1) Web refresh token (works even after browser Google logout) when secret was saved
+ * 2) chrome.identity.getAuthToken while the browser Google session exists
+ * 3) Web interactive / silent flow as fallback
+ */
 export async function getGoogleAuthTokenInBackground(interactive: boolean): Promise<string> {
   const settings = await getSettings();
-  const clientId = await resolveGoogleClientId(settings);
-  if (!clientId) throw new Error(googleDriveSetupHint());
+  const webClientId = resolveWebOAuthClientId(settings);
+  const chromeClientId = getManifestOAuthClientId();
+  if (!webClientId && !chromeClientId) throw new Error(googleDriveSetupHint());
   if (!hasIdentityApi()) {
     throw new Error("当前环境不支持 Google 登录（需要 Chrome 扩展 identity 权限）。");
   }
 
-  const useWebFlow = usesUiOAuthClientId(settings) || !getManifestOAuthClientId();
-  if (useWebFlow) {
-    return acquireWebFlowToken(clientId, interactive);
-  }
+  const secret = await resolveGoogleClientSecretAsync(settings);
 
-  if (!interactive) {
-    try {
-      return await getAuthTokenFromManifest(false);
-    } catch {
-      /* fall through */
+  // 1) Offline renew via refresh token (Web client + secret)
+  if (webClientId && secret) {
+    const cached = await readTokenCache();
+    if (cached?.clientId === webClientId) {
+      if (cached.accessToken && cached.expiresAt > Date.now() + 60_000) {
+        return cached.accessToken;
+      }
+      if (cached.refreshToken) {
+        const refreshed = await refreshWithStoredRefreshToken(webClientId, secret, cached);
+        if (refreshed) return refreshed;
+      }
     }
   }
-  return getAuthTokenFromManifest(interactive);
+
+  // 2) Chrome-managed token (skip when user pasted a custom Web client ID)
+  if (chromeClientId && !usesUiOAuthClientId(settings)) {
+    try {
+      return await getAuthTokenFromManifest(interactive);
+    } catch (e) {
+      if (!webClientId) throw e;
+      if (!interactive) {
+        // Silent status checks must not open a login window via Web fallback.
+        throw e instanceof Error ? e : new Error(String(e));
+      }
+      // Browser signed out of Google — fall through to Web / refresh token
+    }
+  }
+
+  // 3) Web OAuth (with secret → refresh token; without → ~1h implicit)
+  if (webClientId) {
+    return acquireWebFlowToken(webClientId, interactive);
+  }
+
+  throw new Error(googleDriveSetupHint());
 }
 
 export async function getGoogleAuthToken(interactive: boolean): Promise<string> {
   const settings = await getSettings();
-  const clientId = await resolveGoogleClientId(settings);
-  if (!clientId) throw new Error(googleDriveSetupHint());
-
-  const useWebFlow = usesUiOAuthClientId(settings) || !getManifestOAuthClientId();
-  if (useWebFlow) {
-    try {
-      const cached = await readTokenCache();
-      if (cached && cached.clientId === clientId && cached.expiresAt > Date.now() + 60_000 && cached.accessToken) {
-        return cached.accessToken;
-      }
-    } catch {
-      /* storage proxy may fail briefly — fall through to SW auth */
-    }
+  if (!resolveWebOAuthClientId(settings) && !getManifestOAuthClientId()) {
+    throw new Error(googleDriveSetupHint());
   }
 
   if (!hasIdentityApi()) {
@@ -369,11 +380,74 @@ export async function fetchGoogleAccountEmail(token: string): Promise<string | u
   return data.email;
 }
 
-export async function connectGoogleAccount(): Promise<{ email?: string }> {
-  const clientId = await resolveGoogleClientId();
-  if (!clientId) throw new Error(googleDriveSetupHint());
-  const token = await getGoogleAuthToken(true);
-  const email = await fetchGoogleAccountEmail(token);
+export type ConnectGoogleAccountMode = "auto" | "builtin" | "custom";
+
+/**
+ * - builtin: Chrome Extension client (+ optional baked Web secret); ignores UI-pasted client ID
+ * - custom: Web 应用 client from the control-panel fields only
+ * - auto: prefer custom ID when pasted, otherwise builtin
+ */
+export async function connectGoogleAccount(
+  options?: { mode?: ConnectGoogleAccountMode }
+): Promise<{ email?: string }> {
+  const settings = await getSettings();
+  const mode = options?.mode ?? "auto";
+  const uiClientId = settings.googleDriveClientId?.trim() || undefined;
+  const chromeClientId = mode === "custom" ? undefined : getManifestOAuthClientId();
+  const webClientId =
+    mode === "builtin"
+      ? getBuiltinGoogleOAuthClientId()
+      : mode === "custom"
+        ? uiClientId
+        : uiClientId || getBuiltinGoogleOAuthClientId();
+
+  if (mode === "custom" && !webClientId) {
+    throw new Error("请先在「高级」粘贴自建 Web 应用的 OAuth 客户端 ID，再点「用自建客户端连接 Drive」。");
+  }
+  if (!webClientId && !chromeClientId) throw new Error(googleDriveSetupHint());
+
+  let email: string | undefined;
+  let lastError: Error | undefined;
+
+  // Builtin / auto without custom ID: one-click Chrome identity
+  if (mode !== "custom" && chromeClientId && hasIdentityApi() && !(mode === "auto" && uiClientId)) {
+    try {
+      const token = await getAuthTokenFromManifest(true);
+      email = await fetchGoogleAccountEmail(token);
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+
+  // Web flow: custom always; builtin/auto when secret or Chrome failed / no Chrome client
+  const secret =
+    mode === "builtin"
+      ? getBuiltinGoogleOAuthClientSecret() ||
+        (!uiClientId ? settings.googleDriveClientSecret?.trim() || undefined : undefined)
+      : await resolveGoogleClientSecretAsync(settings);
+  if (webClientId && secret) {
+    try {
+      await acquireWebFlowToken(webClientId, true);
+      if (!email) {
+        const token = await getGoogleAuthToken(false);
+        email = await fetchGoogleAccountEmail(token);
+      }
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      if (!email) throw lastError;
+    }
+  } else if ((!email || mode === "custom") && webClientId) {
+    try {
+      const token = await acquireWebFlowToken(webClientId, true);
+      email = await fetchGoogleAccountEmail(token);
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+      throw lastError;
+    }
+  } else if (!email) {
+    throw lastError ?? new Error(googleDriveSetupHint());
+  }
+
   return { email };
 }
 
@@ -401,34 +475,58 @@ export function getExtensionAuthInfo() {
   };
 }
 
+/** True when a Web refresh token is stored (offline renew after browser Google logout). */
 export async function hasGoogleAuthRefreshToken(): Promise<boolean> {
   const settings = await getSettings();
-  const clientId = await resolveGoogleClientId(settings);
-  if (!clientId) return false;
+  const webClientId = resolveWebOAuthClientId(settings);
+  if (!webClientId) return false;
   const cached = await readTokenCache();
-  return Boolean(cached?.refreshToken && cached.clientId === clientId);
+  return Boolean(cached?.refreshToken && cached.clientId === webClientId);
 }
 
-/** Whether cached OAuth tokens can still upload without reconnecting. */
+/** Whether auth can still upload without reconnecting. */
 export async function isGoogleAuthSessionValid(): Promise<boolean> {
   const settings = await getSettings();
   if (!settings.googleDriveAccountEmail?.trim()) return false;
-  const clientId = await resolveGoogleClientId(settings);
-  if (!clientId) return false;
+
+  if (await hasGoogleAuthRefreshToken()) return true;
+
+  if (usesChromeIdentityAuth() && hasIdentityApi()) {
+    try {
+      await getAuthTokenFromManifest(false);
+      return true;
+    } catch {
+      /* try web cache below */
+    }
+  }
+
+  const webClientId = resolveWebOAuthClientId(settings);
+  if (!webClientId) return false;
   const cached = await readTokenCache();
-  if (!cached || cached.clientId !== clientId) return false;
-  if (cached.refreshToken?.trim()) return true;
+  if (!cached || cached.clientId !== webClientId) return false;
   return Boolean(cached.accessToken && cached.expiresAt > Date.now() + 30_000);
 }
 
-/** Unix ms when cached Web OAuth token expires, or null if none / wrong client / refresh token active. */
+/** Unix ms when short-lived Web token expires; null if offline refresh or Chrome-managed. */
 export async function getGoogleAuthSessionExpiry(): Promise<number | null> {
   if (await hasGoogleAuthRefreshToken()) return null;
+  if (usesChromeIdentityAuth()) {
+    // Chrome manages renew while signed in — no fixed expiry to show.
+    // Still show nothing when silent token works; short-lived only for pure web cache.
+    try {
+      if (hasIdentityApi()) {
+        await getAuthTokenFromManifest(false);
+        return null;
+      }
+    } catch {
+      /* fall through to web cache expiry */
+    }
+  }
   const settings = await getSettings();
-  const clientId = await resolveGoogleClientId(settings);
-  if (!clientId) return null;
+  const webClientId = resolveWebOAuthClientId(settings);
+  if (!webClientId) return null;
   const cached = await readTokenCache();
-  if (!cached || cached.clientId !== clientId) return null;
+  if (!cached || cached.clientId !== webClientId) return null;
   return cached.expiresAt;
 }
 

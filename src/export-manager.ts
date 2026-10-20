@@ -7,7 +7,7 @@ import {
   downloadOriginalRecording,
   partsForSession
 } from "./download/original-download-service";
-import { mixToMono, shouldExportMono, toMp3Kbps } from "./mp3-params";
+import { mixToMono, outputSampleRateForMp3, resamplePcm, shouldExportMono, toMp3Kbps } from "./mp3-params";
 import { finalizeMp3Blob } from "./mp3-metadata";
 import { resolveExportNameForSession } from "./session-display-name";
 import { getSettings } from "./extension-storage";
@@ -385,22 +385,42 @@ async function decodeWebmWindows(
   return decodedCount;
 }
 
+/** Fade only the decoder's first samples. Fading every window join punches a click into the audio. */
+function softenDecodedBufferEdges(buffer: AudioBuffer, isFirst: boolean, fadeMs = 2): void {
+  if (!isFirst) return;
+  const fadeSamples = Math.min(
+    Math.floor((buffer.sampleRate || 48000) * (fadeMs / 1000)),
+    Math.floor(buffer.length / 2)
+  );
+  if (fadeSamples < 2) return;
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    const data = buffer.getChannelData(c);
+    for (let i = 0; i < fadeSamples; i++) {
+      data[i]! *= (i + 1) / fadeSamples;
+    }
+  }
+}
+
 async function feedMp3WorkerFromBuffer(
   session: Mp3WorkerSession,
   buffer: AudioBuffer,
   forceMono: boolean,
+  outSampleRate: number,
   onSlice?: (doneSamples: number, totalSamples: number) => void
 ): Promise<{ sampleRate: number; channels: number; durationMs: number }> {
-  const leftSrc = buffer.getChannelData(0);
-  const rightSrc = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : undefined;
+  const inRate = buffer.sampleRate || 48000;
+  const leftIn = buffer.getChannelData(0);
+  const rightIn = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : undefined;
+  const mixed = forceMono && rightIn ? mixToMono(leftIn, rightIn) : leftIn;
+  const leftSrc = resamplePcm(mixed, inRate, outSampleRate);
+  const rightSrc =
+    !forceMono && rightIn ? resamplePcm(rightIn, inRate, outSampleRate) : undefined;
   const total = leftSrc.length;
-  const sampleRate = buffer.sampleRate || 48000;
+  const sampleRate = outSampleRate;
   for (let i = 0; i < total; i += PCM_SLICE_SAMPLES) {
     const end = Math.min(i + PCM_SLICE_SAMPLES, total);
-    const leftSlice = forceMono && rightSrc
-      ? mixToMono(leftSrc.subarray(i, end), rightSrc.subarray(i, end))
-      : leftSrc.slice(i, end);
-    const rightSlice = !forceMono && rightSrc ? rightSrc.slice(i, end) : undefined;
+    const leftSlice = leftSrc.slice(i, end);
+    const rightSlice = rightSrc ? rightSrc.slice(i, end) : undefined;
     const transfer: Transferable[] = [leftSlice.buffer];
     if (rightSlice) transfer.push(rightSlice.buffer);
     const pending = session.nextMessage();
@@ -491,7 +511,9 @@ export async function convertSessionToMp3(
     if (!parts.length) throw new Mp3ConversionError("read_parts", "NO_PARTS", "没有可转换的录音分段");
 
     const targetBitrate = resolveBitrate(options?.overrideBitrate ?? session.bitrate);
-    const forceMono = options?.forceMono || shouldExportMono(targetBitrate);
+    const forceMono = options?.forceMono === true || shouldExportMono(targetBitrate);
+    let encodeSampleRate = outputSampleRateForMp3(targetBitrate, sampleRate);
+    let fedWindowIndex = 0;
 
     for (let pi = 0; pi < parts.length; pi++) {
       const part = parts[pi]!;
@@ -515,13 +537,16 @@ export async function convertSessionToMp3(
           sampleRate = buffer.sampleRate || sampleRate;
           stage = "channel_prepare";
           outChannels = forceMono || buffer.numberOfChannels < 2 ? 1 : 2;
+          softenDecodedBufferEdges(buffer, fedWindowIndex === 0);
+          fedWindowIndex += 1;
 
           if (!encoder.session) {
             stage = "init_worker";
             encoder.session = createMp3WorkerSession();
           }
           if (!encoder.started) {
-            await startMp3WorkerSession(encoder.session, sampleRate, outChannels, targetBitrate);
+            encodeSampleRate = outputSampleRateForMp3(targetBitrate, sampleRate);
+            await startMp3WorkerSession(encoder.session, encodeSampleRate, outChannels, targetBitrate);
             encoder.started = true;
           } else if (encoder.session.channels !== outChannels) {
             throw new Mp3ConversionError(
@@ -536,8 +561,9 @@ export async function convertSessionToMp3(
             encoder.session,
             buffer,
             forceMono,
+            encodeSampleRate,
             (done, total) => {
-              const sliceMs = (done / sampleRate) * 1000;
+              const sliceMs = (done / encodeSampleRate) * 1000;
               void updateMp3Progress(
                 session,
                 "encoding",
@@ -595,6 +621,9 @@ export async function convertSessionToMp3(
 
     stage = "save_mp3";
     session.bitrate = targetBitrate;
+    logBase.requestedBitrate = targetBitrate;
+    logBase.encodeSampleRate = encodeSampleRate;
+    logBase.mp3Bytes = blob.size;
     const fileName = await uniqueFileName(exportTitle);
     const file: Mp3File = {
       id: id(),
@@ -605,6 +634,9 @@ export async function convertSessionToMp3(
       createdAt: Date.now(),
       blob
     };
+    // Drop older encodes for this session. Otherwise download keeps returning the first
+    // (higher-bitrate) MP3, and each re-export only adds another copy in storage.
+    await storage.deleteMp3ForSession(sessionId);
     await storage.saveMp3(file);
     const persisted = await verifyMp3Persisted(sessionId);
     if (!persisted) {

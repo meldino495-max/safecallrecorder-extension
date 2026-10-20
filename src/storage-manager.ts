@@ -75,7 +75,8 @@ export class StorageManager {
 
   async getMp3(sessionId: string): Promise<Mp3File | undefined> {
     const files = await this.byIndex<Mp3File>("mp3Files", "sessionId", sessionId);
-    return files[0];
+    if (!files.length) return undefined;
+    return files.reduce((latest, file) => (file.createdAt > latest.createdAt ? file : latest));
   }
 
   async estimateSessionBytes(sessionId: string): Promise<number> {

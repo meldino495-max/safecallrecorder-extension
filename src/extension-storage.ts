@@ -201,6 +201,22 @@ export async function getSettings(): Promise<AppSettings> {
   }
 }
 
+/** Fresh settings object. Optional fields such as Drive client id are absent. */
+export function defaultSettingsSnapshot(): AppSettings {
+  return applyRecordingNameProfilesToSettings({
+    ...DEFAULT_SETTINGS,
+    googleDriveEnabled: false,
+    googleDriveConnectMode: null
+  });
+}
+
+/** Replace stored settings. Does not delete recordings. */
+export async function resetSettingsToDefaults(): Promise<AppSettings> {
+  const next = defaultSettingsSnapshot();
+  await storageSet({ settings: next });
+  return next;
+}
+
 export async function setSettings(partial: Partial<AppSettings>): Promise<AppSettings> {
   const cur = await getSettings();
   const next = { ...cur, ...partial } as AppSettings;

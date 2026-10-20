@@ -34,27 +34,25 @@ export async function handleGoogleDriveMessage(
   payload: Record<string, unknown> = {}
 ): Promise<unknown> {
   if (type === "GOOGLE_DRIVE_GET_STATUS") {
+    // Status reads must stay silent — never open Google login on dashboard open.
+    // ensureGoogleAccountEmailSaved / interactive OAuth only run after user clicks Connect.
     const settings = await loadSettings();
-    if (settings.googleDriveEnabled === true) {
-      await ensureGoogleAccountEmailSaved().catch(() => undefined);
-    }
-    const refreshed = await loadSettings();
     const authExpiresAt = await getGoogleAuthSessionExpiry();
     const authHasRefreshToken = await hasGoogleAuthRefreshToken();
-    const authValid = refreshed.googleDriveAccountEmail?.trim()
+    const authValid = settings.googleDriveAccountEmail?.trim()
       ? await isGoogleAuthSessionValid()
       : false;
     return {
-      configured: isGoogleDriveConfigured(refreshed),
-      enabled: refreshed.googleDriveEnabled === true,
-      connected: isGoogleDriveLinked(refreshed),
+      configured: isGoogleDriveConfigured(settings),
+      enabled: settings.googleDriveEnabled === true,
+      connected: isGoogleDriveLinked(settings),
       authValid,
-      email: refreshed.googleDriveAccountEmail,
-      clientId: refreshed.googleDriveClientId,
-      folderId: refreshed.googleDriveFolderId,
-      folderName: refreshed.googleDriveFolderName,
-      uploadMode: refreshed.googleDriveUploadMode || "local_and_cloud",
-      autoUploadOnStop: refreshed.googleDriveAutoUploadOnStop !== false,
+      email: settings.googleDriveAccountEmail,
+      clientId: settings.googleDriveClientId,
+      folderId: settings.googleDriveFolderId,
+      folderName: settings.googleDriveFolderName,
+      uploadMode: settings.googleDriveUploadMode || "local_and_cloud",
+      autoUploadOnStop: settings.googleDriveAutoUploadOnStop !== false,
       authExpiresAt,
       authHasRefreshToken,
       ...getExtensionAuthInfo()

@@ -15,6 +15,8 @@ import {
 } from "./download/mp3-download-service";
 import { MessageType, requestId, type Request } from "./messages";
 import { LocalMediaPlaybackMonitor } from "./local-media-playback-monitor";
+import { captureAudioConstraints } from "./device-manager";
+import { shouldExportMono } from "./mp3-params";
 import { StreamLevelMonitor, type AudioLevelUpdate } from "./stream-level-monitor";
 import { applyLevelUpdate, ensureMeterHost, removeSessionMeters, resetWaveform, setWaveformMode } from "./waveform-ui";
 import { DEFAULT_SETTINGS, type AppSettings, type Session, type StopDownloadMode } from "./types";
@@ -22,6 +24,7 @@ import {
   diagnoseStorageEnvironment,
   getSettings,
   isExtensionContext,
+  resetSettingsToDefaults,
   setSettings
 } from "./extension-storage";
 import { openHelpPage } from "./help-nav";
@@ -118,9 +121,14 @@ import {
   getGoogleRedirectUri,
   googleDriveSetupHint,
   isGoogleDriveConfigured,
+  usesChromeIdentityAuth,
   friendlyGoogleConnectError
 } from "./google-drive/config";
-import { connectGoogleAccount, getAuthSessionForExport } from "./google-drive/auth";
+import {
+  connectGoogleAccount,
+  getAuthSessionForExport,
+  type ConnectGoogleAccountMode
+} from "./google-drive/auth";
 import { ensureDefaultDriveFolder } from "./google-drive/drive-api";
 import {
   applyGoogleDriveConfig,
@@ -1434,6 +1442,13 @@ function syncRecordingNameProfilesUi() {
   applyRecordingNameConfigToUi(active.config);
 }
 
+/** Append _NNkbps so re-exports at different qualities don’t overwrite / confuse downloads. */
+function exportDisplayNameWithBitrate(baseName: string, bitrateBps: number): string {
+  const kbps = Math.round(resolveBitrate(bitrateBps) / 1000);
+  const trimmed = baseName.replace(/[_\s-]?\d+\s*kbps$/i, "").trim() || baseName;
+  return `${trimmed}_${kbps}kbps`;
+}
+
 function exportDisplayNameForSession(session: Session): string {
   return resolveExportNameForSession(session, settings);
 }
@@ -1805,6 +1820,7 @@ async function syncGoogleDriveSettingsToStorage(): Promise<void> {
   flushGoogleDriveCredentialsFromUi();
   const merged = await setSettings({
     googleDriveEnabled: settings.googleDriveEnabled,
+    googleDriveConnectMode: settings.googleDriveConnectMode,
     googleDriveClientId: settings.googleDriveClientId,
     googleDriveClientSecret: settings.googleDriveClientSecret,
     googleDriveFolderId: settings.googleDriveFolderId,
@@ -2078,7 +2094,7 @@ async function requestPermission() {
   let stream: MediaStream | undefined;
   try {
     $("deviceMsg").textContent = "正在请求权限…";
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: captureAudioConstraints(), video: false });
     await refreshDevices();
     $("deviceMsg").textContent = "";
     await refreshDeviceVerification(true);
@@ -2105,7 +2121,7 @@ async function startPreview() {
   const label = devices.find((d) => d.deviceId === deviceId)?.label || "声音设备";
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { deviceId: { exact: deviceId } },
+      audio: captureAudioConstraints(deviceId),
       video: false
     });
     // If recording started while getUserMedia was pending, release immediately.
@@ -2299,7 +2315,11 @@ function renderHistory(sessions: Session[], activeIds: string[], force = false) 
     const title = sessionDisplayTitle(s.displayName, s.name);
     const when = new Date(s.startedAt).toLocaleString();
     const dur = fmt(s.durationMs || s.safeDurationMs || 0);
-    const size = s.fileSize ? `${(s.fileSize / (1024 * 1024)).toFixed(2)} MB` : "—";
+    const size = s.fileSize
+      ? s.fileSize < 1024 * 1024
+        ? `${Math.max(1, Math.round(s.fileSize / 1024))} KB`
+        : `${(s.fileSize / (1024 * 1024)).toFixed(2)} MB`
+      : "—";
     const rate = formatBitrateHistory(s.bitrate || DEFAULT_BITRATE, s.hasMp3);
     const state = historyLabel(s);
     const isDeleting = deletingSessionIds.has(s.id);
@@ -2395,22 +2415,31 @@ function renderHistory(sessions: Session[], activeIds: string[], force = false) 
     }) => {
       if (regeneratingSessions.has(s.id) || deletingSessionIds.has(s.id)) return;
       regeneratingSessions.add(s.id);
-      const exportName = opts.exportDisplayName ?? exportDisplayNameForSession(s);
+      const target = resolveBitrate(opts.overrideBitrate ?? (s.bitrate || DEFAULT_BITRATE));
+      const baseName = opts.exportDisplayName ?? exportDisplayNameForSession(s);
+      const exportName = exportDisplayNameWithBitrate(baseName, target);
       try {
-        const target = resolveBitrate(opts.overrideBitrate ?? (s.bitrate || DEFAULT_BITRATE));
         setStatus(`${opts.label}…`);
         await ask(MessageType.ExportSession, {
           sessionId: s.id,
           download: false,
           force: true,
-          forceMono: opts.forceMono ?? target <= 16000,
+          forceMono: opts.forceMono ?? shouldExportMono(target),
           overrideBitrate: target,
           exportDisplayName: exportName
         });
-        setStatus(`已按 ${Math.round(target / 1000)} kbps 生成 MP3：${exportName}`);
         await reloadHistoryVerified("after_regenerate");
+        const saved = historyRecords.find((row) => row.id === s.id);
+        const sizeLabel = saved?.fileSize
+          ? saved.fileSize < 1024 * 1024
+            ? `${Math.max(1, Math.round(saved.fileSize / 1024))} KB`
+            : `${(saved.fileSize / (1024 * 1024)).toFixed(2)} MB`
+          : "";
+        setStatus(
+          `已按 ${Math.round(target / 1000)} kbps 生成 MP3${sizeLabel ? `（${sizeLabel}）` : ""}：${exportName}`
+        );
         const dl = await downloadRecordingMp3(s.id, "retry", { filenameOverride: exportName });
-        if (dl.ok) setStatus(`下载已开始：${dl.filename || ""}`);
+        if (dl.ok) setStatus(`下载已开始：${dl.filename || ""}（${Math.round(target / 1000)} kbps）`);
         else setStatus(friendlyDownloadError(dl.error.code, dl.error.message));
       } catch (e) {
         setStatus(friendlyError(e instanceof Error ? e.message : String(e)));
@@ -2581,33 +2610,14 @@ function renderHistory(sessions: Session[], activeIds: string[], force = false) 
       exportBtn.textContent = "导出MP3";
       exportBtn.disabled = isDeleting;
       exportBtn.onclick = () => {
-        const exportName = exportDisplayNameForSession(s);
-        const target = resolveBitrate(Number(sel.value) || chosenExportBitrate(s));
+        // Always re-encode at the dropdown bitrate (do not reuse old MP3 / top-bar bitrate).
+        const target = resolveBitrate(
+          Number(sel.value) || exportBitrateChoice.get(s.id) || chosenExportBitrate(s)
+        );
         exportBitrateChoice.set(s.id, target);
-        const sameAsCurrent = canDownloadMp3 && target === resolveBitrate(s.bitrate || DEFAULT_BITRATE);
-        if (sameAsCurrent) {
-          void (async () => {
-            exportBtn.disabled = true;
-            exportBtn.textContent = "正在读取……";
-            try {
-              const result = await downloadRecordingMp3(s.id, "manual", { filenameOverride: exportName });
-              if (!result.ok) {
-                setStatus(friendlyDownloadError(result.error.code, result.error.message));
-                return;
-              }
-              setStatus(`下载已开始：${result.filename}`);
-            } catch (e) {
-              setStatus(friendlyError(e instanceof Error ? e.message : String(e)));
-            } finally {
-              exportBtn.textContent = "导出MP3";
-              exportBtn.disabled = false;
-            }
-          })();
-          return;
-        }
         void regenerate({
           overrideBitrate: target,
-          exportDisplayName: exportName,
+          exportDisplayName: exportDisplayNameForSession(s),
           label: `正在按 ${Math.round(target / 1000)} kbps 导出 MP3`
         });
       };
@@ -3058,9 +3068,20 @@ function renderGoogleDriveAuthExpiryHint() {
   if (!el) return;
   const linked = isGoogleDriveLinked(settings);
   if (linked && !googleDriveAuthValid && !googleDriveAuthHasRefreshToken) {
-    el.textContent = "Google 登录已失效，请点「连接 Google 账号」重新授权。";
+    el.textContent = "Google 登录已失效，请点「连接 Drive」重新授权。";
     el.classList.remove("hidden");
     el.classList.add("warning");
+    return;
+  }
+  if (linked && googleDriveAuthHasRefreshToken) {
+    el.textContent = "已启用离线长期续期（退出浏览器 Google 账号后仍可自动续期）。";
+    el.classList.remove("hidden", "warning");
+    return;
+  }
+  if (linked && googleDriveAuthValid && googleDriveAuthExpiresAt == null && usesChromeIdentityAuth()) {
+    el.textContent =
+      "浏览器登录 Google 期间自动续期。若要退出 Google 后仍续期：展开「高级」填写客户端密钥并重新连接。";
+    el.classList.remove("hidden", "warning");
     return;
   }
   const hint = linked
@@ -3082,9 +3103,33 @@ function renderGoogleDriveAuthExpiryHint() {
   );
 }
 
+function resolveGoogleDriveConnectMode(): "builtin" | "custom" | null {
+  if (settings.googleDriveEnabled !== true) return null;
+  const mode = settings.googleDriveConnectMode;
+  if (mode === "builtin" || mode === "custom") return mode;
+  return settings.googleDriveClientId?.trim() ? "custom" : "builtin";
+}
+
+let syncingGoogleDriveModeUi = false;
+
 function syncGoogleDriveSettingsUi() {
-  const enabled = $<HTMLInputElement>("googleDriveEnabled");
-  if (enabled) enabled.checked = settings.googleDriveEnabled === true;
+  const connectMode = resolveGoogleDriveConnectMode();
+  const driveOn = connectMode != null;
+  settings.googleDriveEnabled = driveOn;
+  settings.googleDriveConnectMode = driveOn ? connectMode : null;
+
+  syncingGoogleDriveModeUi = true;
+  try {
+    const enabled = $<HTMLInputElement>("googleDriveEnabled");
+    if (enabled) enabled.checked = driveOn;
+    const modeBuiltin = $<HTMLInputElement>("googleDriveModeBuiltin");
+    if (modeBuiltin) modeBuiltin.checked = connectMode === "builtin";
+    const modeCustom = $<HTMLInputElement>("googleDriveModeCustom");
+    if (modeCustom) modeCustom.checked = connectMode === "custom";
+  } finally {
+    syncingGoogleDriveModeUi = false;
+  }
+
   const clientInput = $<HTMLInputElement>("googleDriveClientId");
   if (clientInput && document.activeElement !== clientInput) {
     clientInput.value = settings.googleDriveClientId ?? "";
@@ -3103,21 +3148,33 @@ function syncGoogleDriveSettingsUi() {
   if (redirectTutorial) redirectTutorial.textContent = redirectUri;
   const extIdTutorial = $("googleDriveExtensionIdTutorial");
   if (extIdTutorial) extIdTutorial.textContent = extensionId;
-  const mode = $<HTMLSelectElement>("googleDriveUploadMode");
-  if (mode) mode.value = settings.googleDriveUploadMode || "local_and_cloud";
+  const uploadMode = $<HTMLSelectElement>("googleDriveUploadMode");
+  if (uploadMode) uploadMode.value = settings.googleDriveUploadMode || "local_and_cloud";
   const auto = $<HTMLInputElement>("googleDriveAutoUploadOnStop");
   if (auto) auto.checked = settings.googleDriveAutoUploadOnStop !== false;
   const configured = isGoogleDriveConfigured(settings);
-  const driveOn = settings.googleDriveEnabled === true;
-  const setupGuide = $("googleDriveSetupGuide");
-  if (setupGuide) setupGuide.classList.toggle("hidden", !driveOn);
   const setupHint = $("googleDriveSetupHint");
   if (setupHint) {
     setupHint.textContent = configured ? "" : googleDriveSetupHint();
     setupHint.classList.toggle("hidden", !driveOn || configured);
   }
-  const panel = $("googleDrivePanel");
-  if (panel) panel.classList.toggle("hidden", !driveOn);
+  const modePickHint = $("googleDriveModePickHint");
+  if (modePickHint) modePickHint.classList.toggle("hidden", driveOn);
+
+  $("googleDriveBuiltinPanel")?.classList.toggle("hidden", connectMode !== "builtin");
+  $("googleDriveCustomPanel")?.classList.toggle("hidden", connectMode !== "custom");
+  $("googleDriveSharedPanel")?.classList.toggle("hidden", !driveOn);
+
+  const advanced = $("googleDriveAdvanced") as HTMLDetailsElement | null;
+  if (advanced) {
+    const summary = advanced.querySelector(".google-drive-advanced-summary");
+    if (summary) {
+      summary.innerHTML = googleDriveAuthHasRefreshToken
+        ? `自建教程 / 离线续期已开启 / 导出配置<span class="google-drive-setup-tutor-hint">（可选）</span>`
+        : `自建教程 / 离线续期说明 / 导出配置<span class="google-drive-setup-tutor-hint">（可选）</span>`;
+    }
+  }
+
   const account = $("googleDriveAccountLabel");
   if (account) {
     account.textContent = googleDriveAccountLabel(settings, {
@@ -3127,21 +3184,46 @@ function syncGoogleDriveSettingsUi() {
   const folder = $("googleDriveFolderLabel");
   if (folder) {
     folder.textContent = settings.googleDriveFolderName
-      ? `当前文件夹：${settings.googleDriveFolderName}`
-      : "当前文件夹：未选择";
+      ? `上传文件夹：${settings.googleDriveFolderName}`
+      : "上传文件夹：连接后自动使用默认文件夹（可随时更换）";
   }
   const linked = isGoogleDriveLinked(settings);
-  const needsConnect = !linked || !googleDriveAuthValid;
   const connectBtn = $<HTMLButtonElement>("googleDriveConnect");
   if (connectBtn) {
     connectBtn.disabled = googleDriveConnecting;
-    connectBtn.classList.toggle("hidden", !needsConnect);
+    connectBtn.textContent = googleDriveConnecting
+      ? "连接中…"
+      : linked && googleDriveAuthValid
+        ? "重新连接"
+        : "连接 Drive";
   }
-  $<HTMLButtonElement>("googleDriveDisconnect")?.classList.toggle("hidden", !linked);
+  const connectCustomBtn = $<HTMLButtonElement>("googleDriveConnectCustom");
+  if (connectCustomBtn) {
+    connectCustomBtn.disabled = googleDriveConnecting;
+    connectCustomBtn.textContent = googleDriveConnecting
+      ? "连接中…"
+      : linked && googleDriveAuthValid
+        ? "重新连接"
+        : "连接 Drive";
+  }
+  const pickFolderBtn = $<HTMLButtonElement>("googleDrivePickFolder");
+  const defaultFolderBtn = $<HTMLButtonElement>("googleDriveUseDefaultFolder");
+  const canBrowseFolder = driveOn && linked && googleDriveAuthValid;
+  if (pickFolderBtn) {
+    pickFolderBtn.disabled = !canBrowseFolder || googleDriveConnecting;
+    pickFolderBtn.title = canBrowseFolder ? "" : "请先连接 Drive 后再更换上传文件夹";
+  }
+  if (defaultFolderBtn) {
+    defaultFolderBtn.disabled = !canBrowseFolder || googleDriveConnecting;
+    defaultFolderBtn.title = canBrowseFolder ? "" : "请先连接 Drive 后再选择默认文件夹";
+  }
+  for (const id of ["googleDriveDisconnectBuiltin", "googleDriveDisconnectCustom"] as const) {
+    $<HTMLButtonElement>(id)?.classList.toggle("hidden", !linked);
+  }
   renderGoogleDriveAuthExpiryHint();
   const privacy = $("privacyNote");
   if (privacy) {
-    privacy.textContent = settings.googleDriveEnabled
+    privacy.textContent = driveOn
       ? "录音保存在本机；启用 Google 云端上传后，MP3 可同步到 Google Drive。"
       : "录音默认保存在本机；启用 Google 云端上传后，MP3 可同步到 Google Drive。";
   }
@@ -3444,25 +3526,48 @@ async function fetchAuthSessionForExport(clientId: string) {
 }
 
 /** Run OAuth in the dashboard page so Brave/Chrome can show the Google popup reliably. */
-async function connectGoogleDriveAccount(): Promise<{ email?: string }> {
+async function connectGoogleDriveAccount(
+  mode: ConnectGoogleAccountMode = "auto"
+): Promise<{ email?: string }> {
   flushGoogleDriveCredentialsFromUi();
-  if (!isGoogleDriveConfigured(settings)) {
-    throw new Error(`${googleDriveSetupHint()} 请填写 OAuth 客户端 ID 后重试。`);
+  if (mode === "custom") {
+    const customId = $<HTMLInputElement>("googleDriveClientId")?.value.trim() || settings.googleDriveClientId?.trim();
+    if (!customId) {
+      const advanced = $("googleDriveAdvanced") as HTMLDetailsElement | null;
+      if (advanced) advanced.open = true;
+      $<HTMLInputElement>("googleDriveClientId")?.focus();
+      throw new Error("请先粘贴自建 Web 应用的 OAuth 客户端 ID，再点「用自建客户端连接 Drive」。");
+    }
+  } else if (mode === "builtin") {
+    // Builtin path does not require UI client ID.
+  } else if (!isGoogleDriveConfigured(settings)) {
+    const advanced = $("googleDriveAdvanced") as HTMLDetailsElement | null;
+    if (advanced) advanced.open = true;
+    $<HTMLInputElement>("googleDriveClientId")?.focus();
+    throw new Error(
+      "尚未配置 OAuth。可直接点「连接 Drive（内置）」；或展开「高级」粘贴自建客户端 ID 后点「用自建客户端连接 Drive」。"
+    );
   }
   if (googleDriveConnecting) {
-    throw new Error("正在连接 Google 账号，请稍候…");
+    throw new Error("正在连接 Drive，请稍候…");
   }
   googleDriveConnecting = true;
   const connectBtn = $<HTMLButtonElement>("googleDriveConnect");
+  const connectCustomBtn = $<HTMLButtonElement>("googleDriveConnectCustom");
   if (connectBtn) connectBtn.disabled = true;
+  if (connectCustomBtn) connectCustomBtn.disabled = true;
   try {
-    setStatus("正在连接 Google 账号…（若 Brave 拦截弹窗，请允许本扩展的弹出窗口）");
+    setStatus(
+      mode === "custom"
+        ? "正在用自建客户端连接 Drive…（若浏览器拦截弹窗，请允许本扩展的弹出窗口）"
+        : "正在连接 Drive（内置）…（若浏览器拦截弹窗，请允许本扩展的弹出窗口）"
+    );
     await syncGoogleDriveSettingsToStorage();
-    const { email } = await connectGoogleAccount();
+    const { email } = await connectGoogleAccount({ mode });
     settings.googleDriveAccountEmail = email;
     settings.googleDriveEnabled = true;
     if (!settings.googleDriveFolderId?.trim()) {
-      setStatus("正在准备 Google Drive 文件夹…");
+      setStatus("正在准备 Google Drive 默认文件夹…");
       const folder = await ensureDefaultDriveFolder();
       settings.googleDriveFolderId = folder.id;
       settings.googleDriveFolderName = folder.name;
@@ -3889,7 +3994,7 @@ async function persistGoogleDriveClientId(showStatus = true) {
   if (showStatus) {
     setStatus(
       next
-        ? "客户端 ID 已保存到本机。请同时备份到记事本/密码管理器，换电脑时要用。请点「连接 Google 账号」。"
+        ? "客户端 ID 已保存。请点「连接 Drive」。"
         : "客户端 ID 已清除。"
     );
   }
@@ -3909,7 +4014,7 @@ async function persistGoogleDriveClientSecret(showStatus = true) {
   if (showStatus) {
     setStatus(
       next
-        ? "客户端密钥已保存到本机。请同时备份到记事本/密码管理器（Google 只显示一次）。请重新点「连接 Google 账号」以启用长期自动续期。"
+        ? "客户端密钥已保存。请重新点「连接 Drive」以启用长期自动续期。"
         : "客户端密钥已清除。"
     );
   }
@@ -3933,13 +4038,25 @@ function flushPendingGoogleDriveCredentialSaves() {
   flushGoogleDriveCredentialsFromUi();
 }
 
-$("googleDriveEnabled").onchange = async () => {
-  settings.googleDriveEnabled = $<HTMLInputElement>("googleDriveEnabled").checked;
+async function applyGoogleDriveConnectMode(next: "builtin" | "custom" | null) {
+  settings.googleDriveConnectMode = next;
+  settings.googleDriveEnabled = next != null;
   syncGoogleDriveSettingsUi();
   await persistDownloadSettings();
-  if (settings.googleDriveEnabled) {
-    await refreshGoogleDriveConnectionStatus();
-  }
+  if (next) await refreshGoogleDriveConnectionStatus();
+}
+$("googleDriveModeBuiltin").onchange = () => {
+  if (syncingGoogleDriveModeUi) return;
+  const on = $<HTMLInputElement>("googleDriveModeBuiltin").checked;
+  void applyGoogleDriveConnectMode(on ? "builtin" : null);
+};
+$("googleDriveModeCustom").onchange = () => {
+  if (syncingGoogleDriveModeUi) return;
+  const on = $<HTMLInputElement>("googleDriveModeCustom").checked;
+  void applyGoogleDriveConnectMode(on ? "custom" : null);
+};
+$("googleDriveEnabled").onchange = () => {
+  // Hidden legacy checkbox — kept in sync by mode toggles.
 };
 $("googleDriveClientId").oninput = () => scheduleGoogleDriveClientIdSave();
 $("googleDriveClientId").onchange = () => {
@@ -4050,20 +4167,25 @@ $("googleDriveImportConfigFile").onchange = async () => {
     setStatus(friendlyError(e instanceof Error ? e.message : String(e)));
   }
 };
+async function runGoogleDriveConnectClick(mode: ConnectGoogleAccountMode) {
+  setStatus(mode === "custom" ? "正在用自建客户端连接 Drive…" : "正在连接 Drive（内置）…");
+  try {
+    const data = await connectGoogleDriveAccount(mode);
+    const folderHint = settings.googleDriveFolderName ? ` → ${settings.googleDriveFolderName}` : "";
+    setStatus(data.email ? `已连接 Drive：${data.email}${folderHint}` : `已连接 Drive${folderHint}`);
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : String(e);
+    setStatus(friendlyGoogleConnectError(raw));
+    console.warn("[GoogleDriveConnect]", mode, raw, e);
+  }
+}
 $("googleDriveConnect").onclick = () => {
-  setStatus("正在连接 Google 账号…");
-  void (async () => {
-    try {
-      const data = await connectGoogleDriveAccount();
-      setStatus(data.email ? `已连接 Google 账号：${data.email}` : "已连接 Google 账号");
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : String(e);
-      setStatus(friendlyGoogleConnectError(raw));
-      console.warn("[GoogleDriveConnect]", raw, e);
-    }
-  })();
+  void runGoogleDriveConnectClick("builtin");
 };
-$("googleDriveDisconnect").onclick = async () => {
+$("googleDriveConnectCustom").onclick = () => {
+  void runGoogleDriveConnectClick("custom");
+};
+async function disconnectGoogleDriveAccount() {
   try {
     await ask(MessageType.GoogleDriveDisconnect);
     settings.googleDriveAccountEmail = undefined;
@@ -4072,11 +4194,13 @@ $("googleDriveDisconnect").onclick = async () => {
     googleDriveAuthValid = false;
     await persistDownloadSettings();
     syncGoogleDriveSettingsUi();
-    setStatus("已断开 Google 账号，文件夹设置已保留。请重新点「连接 Google 账号」。");
+    setStatus("已断开 Drive，文件夹设置已保留。请重新点「连接 Drive」。");
   } catch (e) {
     setStatus(friendlyError(e instanceof Error ? e.message : String(e)));
   }
-};
+}
+$("googleDriveDisconnectBuiltin").onclick = () => void disconnectGoogleDriveAccount();
+$("googleDriveDisconnectCustom").onclick = () => void disconnectGoogleDriveAccount();
 $("googleDriveUseDefaultFolder").onclick = async () => {
   try {
     setStatus("正在创建/查找默认文件夹…");
@@ -4256,19 +4380,28 @@ $("clearHistory").onclick = async () => {
       const skipped = result.skippedSessions || result.skippedSessionIds?.length || 0;
 
       if (failedCount > 0) {
-        setStatus(`已删除${deletedIds.length}条录音，${failedCount}条未能删除。`, { scroll: false });
+        setStatus(`已删除${deletedIds.length}条录音，${failedCount}条未能删除。请刷新页面后查看历史记录。`, { scroll: false });
       } else if (skipped > 0) {
         setStatus(
-          `已清除可安全删除的历史 ${deletedIds.length} 条，保留处理中 ${skipped} 条（约 ${(result.reclaimedBytes / (1024 * 1024)).toFixed(1)} MB）。`,
+          `已清除可安全删除的历史 ${deletedIds.length} 条，保留处理中 ${skipped} 条（约 ${(result.reclaimedBytes / (1024 * 1024)).toFixed(1)} MB）。请刷新页面后查看历史记录。`,
           { scroll: false }
         );
       } else if (deletedIds.length === 0) {
         setStatus("没有可删除的录音历史。", { scroll: false });
       } else {
-        setStatus("已清空全部录音历史。", { scroll: false });
+        setStatus("已清空全部录音历史。请刷新页面后，历史记录才会消失。", { scroll: false });
       }
 
       await reloadHistoryVerified("after_clear");
+      if (deletedIds.length > 0) {
+        await showConfirm({
+          title: "请刷新页面",
+          body: "录音已经删除。请刷新页面后，历史记录才会从列表中消失。",
+          cancelText: "关闭",
+          okText: "知道了",
+          danger: false
+        });
+      }
       return result;
     } catch (e) {
       setStatus("清空失败，录音历史没有被删除。" + friendlyError(e instanceof Error ? e.message : String(e)), {
@@ -4309,6 +4442,35 @@ $("clearHistory").onclick = async () => {
   }
 };
 $("clearAll").onclick = () => void $("clearHistory").click();
+
+$("resetAllSettings").onclick = async () => {
+  const ok = await showConfirm({
+    title: "重置所有设置？",
+    body: "下载方式、比特率、自动录音、命名方案、保存路径和 Google 云端连接都会恢复为默认。录音历史不会删除。",
+    cancelText: "取消",
+    okText: "重置所有设置",
+    danger: true
+  });
+  if (!ok) return;
+  try {
+    await ask(MessageType.GoogleDriveDisconnect).catch(() => undefined);
+    await clearSavedDownloadDirectory().catch(() => undefined);
+    settings = await resetSettingsToDefaults();
+    $<HTMLInputElement>("googleDriveClientId")?.blur();
+    $<HTMLInputElement>("googleDriveClientSecret")?.blur();
+    resetGoogleDriveCredentialInputs();
+    const sensitive = $<HTMLInputElement>("exportIncludeSensitive");
+    if (sensitive) sensitive.checked = false;
+    googleDriveAuthExpiresAt = null;
+    googleDriveAuthHasRefreshToken = false;
+    googleDriveAuthValid = false;
+    syncAllSettingsUi();
+    syncOnboardingCard();
+    setStatus("已恢复默认设置。录音历史未删除。");
+  } catch (e) {
+    setStatus(friendlyError(e instanceof Error ? e.message : String(e)));
+  }
+};
 
 async function downloadBackupBlob(blob: Blob, filename: string) {
   const saved = await saveDownloadBlob(blob, filename);
