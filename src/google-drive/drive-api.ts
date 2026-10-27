@@ -3,6 +3,30 @@ import { clearGoogleTokenCache, getGoogleAuthToken } from "./auth";
 
 export type DriveFolder = { id: string; name: string; parents?: string[] };
 
+export const DRIVE_ROOT_LABEL = "我的云端硬盘";
+
+/** `我的云端硬盘 / 父文件夹 / 当前文件夹` */
+export function driveFolderPathFromChain(
+  files: Array<{ id: string; name: string; parents?: string[] }>,
+  folderId: string
+): string | undefined {
+  const byId = new Map(files.map((file) => [file.id, file]));
+  const names: string[] = [];
+  let current: string | undefined = folderId;
+  const seen = new Set<string>();
+  for (let i = 0; current && i < 20 && !seen.has(current); i++) {
+    seen.add(current);
+    const file = byId.get(current);
+    if (!file?.name) break;
+    const parent = file.parents?.map((id) => id.trim()).find((id) => id && id !== "root");
+    if (!parent) break;
+    names.unshift(file.name);
+    current = parent;
+  }
+  if (!names.length) return undefined;
+  return `${DRIVE_ROOT_LABEL} / ${names.join(" / ")}`;
+}
+
 async function authHeaders(interactive: boolean): Promise<HeadersInit> {
   const token = await getGoogleAuthToken(interactive);
   return { Authorization: `Bearer ${token}` };
@@ -83,6 +107,45 @@ export async function createDriveFolder(name: string, parentId?: string): Promis
   }
   const folder = (await res.json()) as DriveFolder;
   return folder;
+}
+
+async function getDriveFolder(id: string): Promise<DriveFolder | undefined> {
+  let safe: string | undefined;
+  try {
+    safe = sanitizeDriveId(id);
+  } catch {
+    return undefined;
+  }
+  if (!safe) return undefined;
+  const res = await fetchDrive(`${DRIVE_API}/files/${safe}?fields=id,name,parents`, {}, false);
+  if (!res.ok) return undefined;
+  return (await res.json()) as DriveFolder;
+}
+
+/** Full path from My Drive. Missing parents stop the walk instead of failing the label. */
+export async function resolveDriveFolderPath(folderId: string): Promise<string | undefined> {
+  const files: DriveFolder[] = [];
+  let current: string | undefined;
+  try {
+    current = sanitizeDriveId(folderId);
+  } catch {
+    return undefined;
+  }
+  const seen = new Set<string>();
+  for (let i = 0; current && i < 20 && !seen.has(current); i++) {
+    seen.add(current);
+    const file = await getDriveFolder(current);
+    if (!file?.id || !file.name) break;
+    files.push(file);
+    const parent = file.parents?.map((id) => id.trim()).find((id) => id && id !== "root");
+    if (!parent) break;
+    try {
+      current = sanitizeDriveId(parent);
+    } catch {
+      break;
+    }
+  }
+  return driveFolderPathFromChain(files, folderId);
 }
 
 export async function ensureDefaultDriveFolder(): Promise<DriveFolder> {

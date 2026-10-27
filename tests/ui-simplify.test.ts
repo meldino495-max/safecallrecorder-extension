@@ -44,6 +44,8 @@ describe("ui simplification contract", () => {
     expect(html).toContain("连接 Drive（内置）");
     expect(html).toContain("用自建客户端连接 Drive");
     expect(html).toContain('id="googleDriveFolderBlock"');
+    expect(html).toContain('id="googleDriveDropZone"');
+    expect(html).toContain("拖入本地录音，直接上传到上方文件夹");
     expect(html).toContain("可随时更换");
     expect(html).toContain('id="googleDriveAdvanced"');
     expect(html).toContain('id="googleDriveModePickHint"');
@@ -51,6 +53,11 @@ describe("ui simplification contract", () => {
     expect(html).toContain("「连接 Drive（内置）」最多 100 人。若失效（例如超出用户数上限、无法授权），请改用「用自建客户端连接 Drive」。");
     expect(html).toContain('class="google-drive-oauth-fields"');
     expect(html).toContain("Google Cloud 详细配置教程");
+    expect(html).toContain("https://meldino495-max.github.io/safecallrecorder-extension/");
+    expect(html).toContain("https://meldino495-max.github.io/safecallrecorder-extension/privacy.html");
+    expect(html).toContain("https://meldino495-max.github.io/safecallrecorder-extension/terms.html");
+    expect(html).toContain("步骤 2.5：发布正式版（去掉 7 天限制）");
+    expect(html).toContain("发布应用");
     expect(html).toContain('id="googleDriveSetupTutorial"');
     expect(html).toContain('id="googleDriveOAuthIdentity"');
     expect(html).toContain('id="googleDriveCopyRedirectUri"');

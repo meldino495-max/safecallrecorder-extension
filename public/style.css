@@ -868,6 +868,28 @@ input[type="text"]:focus, select:focus {
   padding-top: 4px;
   border-top: 1px solid var(--line);
 }
+.google-drive-dropzone {
+  margin: 4px 0 12px;
+  padding: 16px 14px;
+  border: 1.5px dashed #99f6e4;
+  border-radius: 12px;
+  background: #f8fafc;
+  text-align: center;
+  cursor: pointer;
+}
+.google-drive-dropzone strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: #0f766e;
+}
+.google-drive-dropzone .hint {
+  margin: 0;
+}
+.google-drive-dropzone.dragover {
+  border-color: #0d9488;
+  background: #f0fdf9;
+}
 .google-drive-actions, .google-drive-folder-row {
   display: flex;
   flex-wrap: wrap;

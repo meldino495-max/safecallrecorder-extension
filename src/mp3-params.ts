@@ -15,18 +15,26 @@ export function shouldExportMono(audioBitsPerSecond: number): boolean {
 }
 
 /**
- * Sample rate where the requested CBR step is legal.
+ * lamejs 1.2.1 writes a normal-looking MP3 that decodes as silence for
+ * 16/24 kbps mono at 22050 Hz and 24000 Hz. 16 kHz stays audible.
+ */
+const LAMEJS_SILENT_LOW_RATE = new Set([22050, 24000]);
+
+/**
+ * Sample rate where the requested CBR step is legal and lamejs keeps the sound.
  * MPEG-1 (44.1/48 kHz) has no 16 or 24 kbps. 32 kbps and above stay at the capture rate.
  */
 export function outputSampleRateForMp3(bitrateBps: number, inputRate: number): number {
   const kbps = toMp3Kbps(bitrateBps);
   const input = inputRate > 0 ? inputRate : 48000;
-  let out = 48000;
-  if (kbps <= 24) out = 24000;
-  else out = input >= 44100 ? (input >= 48000 ? 48000 : 44100) : 44100;
+  let out = kbps <= 24 ? 16000 : input >= 44100 ? (input >= 48000 ? 48000 : 44100) : 44100;
   if (input < out) {
     const legal = [8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000];
-    out = legal.reduce((best, rate) => (rate <= input && rate > best ? rate : best), legal[0]!);
+    const silent = kbps <= 24 ? LAMEJS_SILENT_LOW_RATE : undefined;
+    out = legal.reduce(
+      (best, rate) => (rate <= input && rate > best && !silent?.has(rate) ? rate : best),
+      legal[0]!
+    );
   }
   return out;
 }

@@ -11,7 +11,13 @@ import {
   revokeGoogleAuthToken
 } from "./auth";
 import { isGoogleDriveConfigured } from "./config";
-import { createDriveFolder, ensureDefaultDriveFolder, listDriveFolders } from "./drive-api";
+import {
+  createDriveFolder,
+  DRIVE_ROOT_LABEL,
+  ensureDefaultDriveFolder,
+  listDriveFolders,
+  resolveDriveFolderPath
+} from "./drive-api";
 import { uploadSessionMp3ToDrive } from "./upload-service";
 import { isGoogleDriveLinked } from "./settings";
 import { DEFAULT_SETTINGS, type AppSettings } from "../types";
@@ -42,6 +48,14 @@ export async function handleGoogleDriveMessage(
     const authValid = settings.googleDriveAccountEmail?.trim()
       ? await isGoogleAuthSessionValid()
       : false;
+    let folderName = settings.googleDriveFolderName;
+    if (authValid && settings.googleDriveFolderId) {
+      const path = await resolveDriveFolderPath(settings.googleDriveFolderId).catch(() => undefined);
+      if (path && path !== folderName) {
+        folderName = path;
+        await saveSettings({ googleDriveFolderName: path });
+      }
+    }
     return {
       configured: isGoogleDriveConfigured(settings),
       enabled: settings.googleDriveEnabled === true,
@@ -50,7 +64,7 @@ export async function handleGoogleDriveMessage(
       email: settings.googleDriveAccountEmail,
       clientId: settings.googleDriveClientId,
       folderId: settings.googleDriveFolderId,
-      folderName: settings.googleDriveFolderName,
+      folderName,
       uploadMode: settings.googleDriveUploadMode || "local_and_cloud",
       autoUploadOnStop: settings.googleDriveAutoUploadOnStop !== false,
       authExpiresAt,
@@ -70,9 +84,12 @@ export async function handleGoogleDriveMessage(
     let settings = await saveSettings({ googleDriveAccountEmail: email, googleDriveEnabled: true });
     if (!settings.googleDriveFolderId) {
       const folder = await ensureDefaultDriveFolder();
+      const folderPath =
+        (await resolveDriveFolderPath(folder.id).catch(() => undefined)) ||
+        `${DRIVE_ROOT_LABEL} / ${folder.name}`;
       settings = await saveSettings({
         googleDriveFolderId: folder.id,
-        googleDriveFolderName: folder.name
+        googleDriveFolderName: folderPath
       });
     }
     return {
@@ -111,16 +128,18 @@ export async function handleGoogleDriveMessage(
     if (!name) throw new Error("请输入文件夹名称");
     const parentId = typeof payload.parentId === "string" ? payload.parentId : undefined;
     const folder = await createDriveFolder(name, parentId);
-    await saveSettings({ googleDriveFolderId: folder.id, googleDriveFolderName: folder.name });
+    const folderPath = (await resolveDriveFolderPath(folder.id).catch(() => undefined)) || folder.name;
+    await saveSettings({ googleDriveFolderId: folder.id, googleDriveFolderName: folderPath });
     const email = await ensureGoogleAccountEmailSaved().catch(() => undefined);
-    return { ...folder, email };
+    return { ...folder, name: folderPath, email };
   }
 
   if (type === "GOOGLE_DRIVE_ENSURE_DEFAULT_FOLDER") {
     const folder = await ensureDefaultDriveFolder();
-    await saveSettings({ googleDriveFolderId: folder.id, googleDriveFolderName: folder.name });
+    const folderPath = (await resolveDriveFolderPath(folder.id).catch(() => undefined)) || folder.name;
+    await saveSettings({ googleDriveFolderId: folder.id, googleDriveFolderName: folderPath });
     const email = await ensureGoogleAccountEmailSaved().catch(() => undefined);
-    return { ...folder, email };
+    return { ...folder, name: folderPath, email };
   }
 
   if (type === "GOOGLE_DRIVE_GET_AUTH_TOKEN") {

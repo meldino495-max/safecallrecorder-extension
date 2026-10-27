@@ -37,7 +37,11 @@ node scripts/bake-oauth-client.mjs --web <Web客户端ID>.apps.googleusercontent
 3. 「已授权的重定向 URI」添加控制面板显示的  
    `https://<扩展ID>.chromiumapp.org/`（点「复制重定向 URI」）。
 4. 粘贴客户端 ID（密钥可选，有密钥可长期自动续期）。
-5. 点 **连接 Drive**。
+5. 展开教程 **步骤 2.5：发布正式版**。应用停在「测试中」时，授权最多 7 天。在 **品牌塑造 → 应用网域** 填写后，到 **目标对象** 点 **发布应用**：
+   - 应用首页：`https://meldino495-max.github.io/safecallrecorder-extension/`
+   - 应用隐私权政策链接：`https://meldino495-max.github.io/safecallrecorder-extension/privacy.html`
+   - 应用服务条款链接：`https://meldino495-max.github.io/safecallrecorder-extension/terms.html`
+6. 发布后点 **连接 Drive**（若之前已连接，先断开再连）。
 
 详细分步与排错见插件帮助页「Google 云端上传」。
 

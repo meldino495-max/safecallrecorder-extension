@@ -113,7 +113,7 @@ import {
 } from "./device-verify";
 import { canContinueRecording } from "./recording-continue";
 import { driveUploadLabel } from "./google-drive/upload-service";
-import { driveLinkLabel, resolveSessionDriveWebUrl } from "./google-drive/drive-links";
+import { buildDriveFileViewUrl, driveLinkLabel, resolveSessionDriveWebUrl } from "./google-drive/drive-links";
 import { copyTextToClipboard } from "./google-drive/clipboard";
 import { onDriveUploadEvent, type DriveUploadEvent } from "./google-drive/upload-events";
 import { googleDriveAccountLabel, isGoogleDriveLinked, resolveStopDownloadMode, canUploadToGoogleDrive } from "./google-drive/settings";
@@ -129,7 +129,12 @@ import {
   getAuthSessionForExport,
   type ConnectGoogleAccountMode
 } from "./google-drive/auth";
-import { ensureDefaultDriveFolder } from "./google-drive/drive-api";
+import { ensureDefaultDriveFolder, uploadDriveFile } from "./google-drive/drive-api";
+import {
+  isLocalRecordingFile,
+  localRecordingMimeType,
+  localRecordingUploadName
+} from "./google-drive/local-upload";
 import {
   applyGoogleDriveConfig,
   clearGoogleDriveSettings,
@@ -1781,8 +1786,10 @@ function friendlyError(msg: string) {
 
 function setStatus(text: string, options?: { scroll?: boolean }) {
   const el = $("status");
+  const unchanged = el.textContent === text;
   el.textContent = text;
-  if (options?.scroll === false) return;
+  // Repeated status (the 2s recording poll) must not pull the page back to the record button.
+  if (options?.scroll === false || unchanged) return;
   el.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
@@ -2718,7 +2725,7 @@ async function refresh() {
       $<HTMLButtonElement>("stop").disabled = false;
       $("safe").textContent = fmt(active.safeDurationMs);
       $("elapsed").textContent = fmt(active.elapsedMs || Date.now() - active.startedAt);
-      setStatus("正在录音");
+      setStatus("正在录音", { scroll: false });
       for (const level of active.levels || []) applyLevelUpdate($("liveMonitor"), level);
       setWaveformMode("recording", active.id);
       await stopPreview();
@@ -2729,7 +2736,7 @@ async function refresh() {
       $<HTMLButtonElement>("start").disabled = !devices.length;
       $<HTMLButtonElement>("stop").disabled = true;
       if ($("status").textContent === "正在录音" || $("status").textContent === "正在启动……") {
-        setStatus("准备就绪");
+        setStatus("准备就绪", { scroll: false });
       }
       if (!localMediaPlaybackActive) {
         setWaveformMode("preview");
@@ -3049,11 +3056,13 @@ async function refreshGoogleDriveConnectionStatus() {
   try {
     const data = (await ask(MessageType.GoogleDriveGetStatus)) as {
       email?: string;
+      folderName?: string;
       authExpiresAt?: number | null;
       authHasRefreshToken?: boolean;
       authValid?: boolean;
     };
     applyGoogleDriveEmail(data.email);
+    if (data.folderName) settings.googleDriveFolderName = data.folderName;
     googleDriveAuthExpiresAt = data.authExpiresAt ?? null;
     googleDriveAuthHasRefreshToken = data.authHasRefreshToken === true;
     googleDriveAuthValid = data.authValid === true;
@@ -3086,7 +3095,8 @@ function renderGoogleDriveAuthExpiryHint() {
   }
   const hint = linked
     ? formatGoogleAuthExpiryHint(googleDriveAuthExpiresAt, {
-        hasRefreshToken: googleDriveAuthHasRefreshToken
+        hasRefreshToken: googleDriveAuthHasRefreshToken,
+        hasClientSecret: Boolean(settings.googleDriveClientSecret?.trim())
       })
     : null;
   if (!hint) {
@@ -3183,9 +3193,11 @@ function syncGoogleDriveSettingsUi() {
   }
   const folder = $("googleDriveFolderLabel");
   if (folder) {
-    folder.textContent = settings.googleDriveFolderName
-      ? `上传文件夹：${settings.googleDriveFolderName}`
+    const folderPath = settings.googleDriveFolderName?.trim();
+    folder.textContent = folderPath
+      ? `上传文件夹：${folderPath}`
       : "上传文件夹：连接后自动使用默认文件夹（可随时更换）";
+    folder.title = folderPath ? folderPath : "";
   }
   const linked = isGoogleDriveLinked(settings);
   const connectBtn = $<HTMLButtonElement>("googleDriveConnect");
@@ -3254,12 +3266,16 @@ async function refreshDriveFolderModal() {
         void refreshDriveFolderModal();
       };
       btn.ondblclick = async () => {
+        const folderPath = driveFolderBrowseStack
+          .map((frame) => frame.name)
+          .concat(folder.name)
+          .join(" / ");
         settings.googleDriveFolderId = folder.id;
-        settings.googleDriveFolderName = folder.name;
+        settings.googleDriveFolderName = folderPath;
         await persistDownloadSettings();
         syncGoogleDriveSettingsUi();
         $("driveFolderModal").classList.add("hidden");
-        setStatus(`已选择 Google Drive 文件夹：${folder.name}`);
+        setStatus(`已选择 Google Drive 文件夹：${folderPath}`);
       };
       list.append(btn);
     }
@@ -4231,12 +4247,13 @@ $("driveFolderSelectCurrent").onclick = async () => {
     setStatus("请进入某个文件夹后再选择，或使用「创建并选择」。");
     return;
   }
+  const folderPath = driveFolderBrowseStack.map((frame) => frame.name).join(" / ");
   settings.googleDriveFolderId = current.id;
-  settings.googleDriveFolderName = current.name;
+  settings.googleDriveFolderName = folderPath;
   await persistDownloadSettings();
   syncGoogleDriveSettingsUi();
   $("driveFolderModal").classList.add("hidden");
-  setStatus(`已选择 Google Drive 文件夹：${current.name}`);
+  setStatus(`已选择 Google Drive 文件夹：${folderPath}`);
 };
 $("driveFolderCreateBtn").onclick = async () => {
   const name = $<HTMLInputElement>("driveFolderNewName").value.trim() || "SafeCallRecorder";
@@ -4246,12 +4263,16 @@ $("driveFolderCreateBtn").onclick = async () => {
       name,
       parentId: parent?.id
     })) as { id: string; name: string };
+    const folderPath = driveFolderBrowseStack
+      .map((frame) => frame.name)
+      .concat(folder.name)
+      .join(" / ");
     settings.googleDriveFolderId = folder.id;
-    settings.googleDriveFolderName = folder.name;
+    settings.googleDriveFolderName = folder.name.includes(" / ") ? folder.name : folderPath;
     await persistDownloadSettings();
     syncGoogleDriveSettingsUi();
     $("driveFolderModal").classList.add("hidden");
-    setStatus(`已创建并选择文件夹：${folder.name}`);
+    setStatus(`已创建并选择文件夹：${settings.googleDriveFolderName}`);
   } catch (e) {
     setStatus(friendlyError(e instanceof Error ? e.message : String(e)));
   }
@@ -4607,6 +4628,121 @@ fillBitrates();
 installDownloadLifecycleListeners();
 $("driveUploadCopyName").onclick = () => void copyDriveUploadFileName();
 $("driveUploadCopyLink").onclick = () => void copyDriveUploadLink();
+
+let localDriveUploadBusy = false;
+
+async function uploadLocalRecordings(files: File[]) {
+  if (localDriveUploadBusy) {
+    setStatus("正在上传，请稍候。");
+    return;
+  }
+  const folderId = settings.googleDriveFolderId?.trim();
+  if (!canUploadToGoogleDrive(settings) || !folderId) {
+    setStatus("请先连接 Drive，并确认已有上传文件夹。");
+    return;
+  }
+  const accepted: File[] = [];
+  const rejected: string[] = [];
+  for (const file of files) {
+    if (!file.size || !isLocalRecordingFile(file)) rejected.push(file.name || "未命名文件");
+    else accepted.push(file);
+  }
+  if (!accepted.length) {
+    setStatus("请拖入录音文件，支持 MP3、WAV、M4A、WebM、OGG、FLAC。");
+    return;
+  }
+  localDriveUploadBusy = true;
+  $("googleDriveDropZone").setAttribute("aria-busy", "true");
+  let ok = 0;
+  const failed: string[] = [];
+  let last: { name: string; url: string } | undefined;
+  try {
+    for (let i = 0; i < accepted.length; i++) {
+      const file = accepted[i]!;
+      const uploadName = localRecordingUploadName(file.name);
+      const prefix = accepted.length > 1 ? `${i + 1}/${accepted.length} ` : "";
+      showDriveUploadProgress(`正在上传${prefix}${uploadName}`, 0);
+      try {
+        const uploaded = await uploadDriveFile(
+          file,
+          uploadName,
+          localRecordingMimeType(file),
+          folderId,
+          (loaded, total) => {
+            const pct = total > 0 ? (loaded / total) * 100 : -1;
+            showDriveUploadProgress(
+              total > 0 ? `正在上传${prefix}${uploadName}… ${Math.round(pct)}%` : `正在上传${prefix}${uploadName}…`,
+              pct
+            );
+          }
+        );
+        last = {
+          name: uploaded.name || uploadName,
+          url: uploaded.webViewLink?.trim() || buildDriveFileViewUrl(uploaded.id)
+        };
+        ok += 1;
+      } catch (e) {
+        failed.push(`${uploadName}：${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  } finally {
+    localDriveUploadBusy = false;
+    $("googleDriveDropZone").removeAttribute("aria-busy");
+  }
+  if (!ok || !last) {
+    hideDriveUploadPanel();
+    setStatus(`上传失败：${failed[0] || "未知错误"}`);
+    return;
+  }
+  showDriveUploadComplete(last.name, last.url);
+  if (accepted.length === 1 && !failed.length && !rejected.length) return;
+  const parts = [`已上传 ${ok} 个录音到当前云端文件夹`];
+  if (failed.length) parts.push(`${failed.length} 个失败`);
+  if (rejected.length) parts.push(`跳过 ${rejected.length} 个非录音文件`);
+  setStatus(parts.join("，"));
+}
+
+function bindGoogleDriveDropZone() {
+  const zone = $("googleDriveDropZone");
+  const input = $<HTMLInputElement>("googleDriveDropInput");
+  const openPicker = () => input.click();
+  input.addEventListener("click", (event) => event.stopPropagation());
+  zone.addEventListener("click", (event) => {
+    if (event.target === input) return;
+    openPicker();
+  });
+  zone.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openPicker();
+  });
+  input.addEventListener("change", () => {
+    const picked = Array.from(input.files || []);
+    input.value = "";
+    if (picked.length) void uploadLocalRecordings(picked);
+  });
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.classList.add("dragover");
+  });
+  zone.addEventListener("dragleave", (event) => {
+    if (event.relatedTarget instanceof Node && zone.contains(event.relatedTarget)) return;
+    zone.classList.remove("dragover");
+  });
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    zone.classList.remove("dragover");
+    const dropped = Array.from(event.dataTransfer?.files || []);
+    if (dropped.length) void uploadLocalRecordings(dropped);
+  });
+  window.addEventListener("dragover", (event) => event.preventDefault());
+  window.addEventListener("drop", (event) => {
+    if (event.target instanceof Node && zone.contains(event.target)) return;
+    event.preventDefault();
+  });
+}
+bindGoogleDriveDropZone();
 $("googleDriveCopyExtensionId").onclick = () => void copyGoogleDriveExtensionId();
 $("googleDriveCopyRedirectUri").onclick = () => void copyGoogleDriveRedirectUri();
 $("googleDriveOpenExtensionsPage").onclick = () => openExtensionsManagementPage();

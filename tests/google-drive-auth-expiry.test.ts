@@ -29,6 +29,13 @@ describe("google drive auth expiry hint", () => {
     expect(isGoogleAuthExpiryWarning(now + 10 * 60_000, now)).toBe(true);
   });
 
+  it("does not ask to paste the secret again when it is already saved", () => {
+    const hint = formatGoogleAuthExpiryHint(now + 59 * 60_000, { now, hasClientSecret: true });
+    expect(hint).toContain("密钥已保存");
+    expect(hint).toContain("再点一次");
+    expect(hint).not.toContain("下方粘贴");
+  });
+
   it("shows hours and minutes when short-lived", () => {
     const hint = formatGoogleAuthExpiryHint(now + 90 * 60_000, { now });
     expect(hint).toContain("1 小时 30 分钟");

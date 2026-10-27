@@ -72,7 +72,7 @@ export function parseOAuthTokenFromResponseUrl(responseUrl: string): { token: st
   return parseTokenFromResponseUrl(responseUrl);
 }
 
-type WebAuthPrompt = "none" | "select_account" | "consent_select_account";
+type WebAuthPrompt = "none" | "consent" | "select_account" | "consent_select_account";
 
 async function launchWebAuthFlow(url: string, interactive: boolean): Promise<string> {
   return new Promise<string>((resolve, reject) => {
@@ -170,7 +170,13 @@ async function getAuthTokenViaAuthCodeFlow(
     clientSecret
   });
   const cached = await readTokenCache();
-  return cacheTokens(clientId, tokens, cached?.refreshToken);
+  const previousRefreshToken = cached?.clientId === clientId ? cached.refreshToken : undefined;
+  if (!tokens.refresh_token && !previousRefreshToken) {
+    throw new Error(
+      "客户端密钥已使用，但 Google 没有返回长期登录令牌。请再点「连接 Drive」，并在授权页选择允许。客户端类型须是「Web 应用」，不能是 Chrome 扩展。"
+    );
+  }
+  return cacheTokens(clientId, tokens, previousRefreshToken);
 }
 
 async function getAuthTokenViaImplicitWebAuthFlow(
@@ -228,11 +234,11 @@ async function acquireWebFlowToken(clientId: string, interactive: boolean): Prom
       }
     }
 
-    const needRefreshToken = !cached?.refreshToken;
+    const needRefreshToken = !cached?.refreshToken || cached.clientId !== clientId;
     return getAuthTokenViaAuthCodeFlow(clientId, clientSecret, {
       interactive: true,
       needRefreshToken,
-      prompt: needRefreshToken ? "consent_select_account" : "select_account"
+      prompt: needRefreshToken ? "consent" : "select_account"
     });
   }
 

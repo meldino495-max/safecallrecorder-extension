@@ -59,9 +59,12 @@ await copyFile("node_modules/lamejs/lame.min.js", join(STAGING, "lame.min.js"));
   const { readFile, writeFile } = await import("node:fs/promises");
   const lamePath = join(STAGING, "lame.min.js");
   const lame = await readFile(lamePath, "utf8");
+  // Joint stereo and quality 2 use the bits better. out_samplerate must stay equal to
+  // the input rate: otherwise lamejs silently downsamples with a resampler that muffles
+  // speech and adds chirps. The bit reservoir stays off; that port writes blank audio.
   const patched = lame.replace(
-    "q.quality=3;q.bWriteVbrTag=!1;q.disable_reservoir=!0;",
-    "q.quality=2;q.bWriteVbrTag=!1;q.disable_reservoir=!1;"
+    "q.mode=la.STEREO;q.quality=3;q.bWriteVbrTag=!1;q.disable_reservoir=!0;",
+    "q.mode=la.JOINT_STEREO;q.quality=2;q.bWriteVbrTag=!1;q.disable_reservoir=!0;q.out_samplerate=k;"
   );
   if (patched === lame) throw new Error("lame.min.js quality patch did not match");
   await writeFile(lamePath, patched);

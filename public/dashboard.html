@@ -382,16 +382,22 @@
                 </ul>
               </li>
               <li class="google-drive-setup-callout-li">
-                <p class="google-drive-where google-drive-where-warn"><strong>只想自己用、不想给别人用？</strong>
-                  ① 在 <strong>目标对象</strong> 页查看 <strong>发布状态</strong>（新版界面<strong>不在概览页</strong>显示），应为 <strong>测试中</strong>，<strong>不要</strong>点 <strong>发布应用</strong>；
-                  ② 在同一页的 <strong>测试用户</strong> 区域，<strong>只添加你自己的 Gmail</strong>，不要加别人。这样只有你能完成 Google 授权。</p>
+                <p class="google-drive-where google-drive-where-warn"><strong>测试中不能长期生效。</strong>
+                  发布状态停在 <strong>测试中</strong> 时，授权最多 7 天。填完本步后，继续展开下面的 <strong>步骤 2.5：发布正式版</strong>。</p>
               </li>
               <li>点左侧 <strong>品牌塑造</strong>，填写：
                 <ul>
                   <li><strong>应用名称</strong>：<code>SafeCallRecorder</code></li>
                   <li><strong>用户支持邮箱</strong>：选你的 Gmail</li>
                   <li><strong>开发者联系信息</strong>：填你的 Gmail</li>
-                  <li>点 <strong>保存并继续</strong></li>
+                  <li>找到 <strong>应用网域</strong>，三栏都要带 <code>https://</code>：
+                    <ul>
+                      <li><strong>应用首页</strong>：<code>https://meldino495-max.github.io/safecallrecorder-extension/</code></li>
+                      <li><strong>应用隐私权政策链接</strong>：<code>https://meldino495-max.github.io/safecallrecorder-extension/privacy.html</code></li>
+                      <li><strong>应用服务条款链接</strong>：<code>https://meldino495-max.github.io/safecallrecorder-extension/terms.html</code></li>
+                    </ul>
+                  </li>
+                  <li>点 <strong>保存</strong></li>
                 </ul>
               </li>
               <li>点左侧 <strong>数据访问</strong>：不用添加范围，直接点 <strong>保存并继续</strong></li>
@@ -402,15 +408,33 @@
                   <li>点 <strong>添加</strong> → <strong>保存</strong></li>
                 </ul>
               </li>
-              <li>仍在 <strong>目标对象</strong> 页，向上滚动查看 <strong>发布状态</strong>：
-                <ul>
-                  <li>应显示 <strong>测试中</strong>（或英文 <strong>In testing</strong>）→ 个人使用保持此状态即可</li>
-                  <li><strong>概览</strong> 页通常<strong>不会</strong>显示发布状态，看不到是正常的</li>
-                  <li>若显示 <strong>正式版</strong> / <strong>已发布</strong>，且你只想自己用，一般无需改回；关键是测试用户里只有你自己</li>
-                </ul>
-              </li>
+              <li>品牌塑造保存后，展开下一项 <strong>步骤 2.5：发布正式版</strong>，不要停在「测试中」</li>
             </ol>
             <p class="google-drive-where"><strong>若左侧是旧版菜单：</strong>☰ → <strong>API 和服务</strong> → <strong>OAuth 同意屏幕</strong>，发布状态在同意屏幕页面顶部；按钮同样是「外部」「保存并继续」「添加用户」。</p>
+          </div>
+        </details>
+
+        <details class="google-drive-setup-step">
+          <summary>步骤 2.5：发布正式版（去掉 7 天限制）</summary>
+          <div class="google-drive-setup-body">
+            <p class="google-drive-where google-drive-where-warn"><strong>为什么要发布？</strong>应用停在「测试中」时，授权最多 7 天，客户端密钥也不能延长。发布正式版免费，也不会把应用上架到商店。只是让你自己的授权可以长期自动续期。</p>
+            <ol class="google-drive-setup-sublist">
+              <li>点左侧 <strong>品牌塑造</strong>，找到 <strong>应用网域</strong>，三栏都要带 <code>https://</code>：
+                <ul>
+                  <li><strong>应用首页</strong>：<code>https://meldino495-max.github.io/safecallrecorder-extension/</code></li>
+                  <li><strong>应用隐私权政策链接</strong>：<code>https://meldino495-max.github.io/safecallrecorder-extension/privacy.html</code></li>
+                  <li><strong>应用服务条款链接</strong>：<code>https://meldino495-max.github.io/safecallrecorder-extension/terms.html</code></li>
+                </ul>
+              </li>
+              <li>点 <strong>保存</strong></li>
+              <li>点左侧 <strong>目标对象</strong>。发布状态在这一页，<strong>概览</strong> 页通常不显示</li>
+              <li>确认上方是 <strong>测试中</strong>（或英文 <strong>In testing</strong>）</li>
+              <li>点 <strong>发布应用</strong>，在确认框里继续</li>
+              <li>状态变为 <strong>正式版</strong> / <strong>已发布</strong> 即完成</li>
+              <li>回到本插件：点 <strong>断开</strong>，再点一次 <strong>连接 Drive</strong>。测试期间拿到的令牌不会自动延长</li>
+              <li>授权页若显示「此应用未经 Google 验证」：点 <strong>高级</strong> → <strong>前往 SafeCallRecorder（不安全）</strong>。验证完成前最多 100 个 Google 账号；只给自己用没有影响</li>
+            </ol>
+            <p class="google-drive-where"><strong>旧版菜单：</strong>☰ → <strong>API 和服务</strong> → <strong>OAuth 同意屏幕</strong>，页面顶部有发布状态和 <strong>发布应用</strong>。</p>
           </div>
         </details>
 
@@ -509,9 +533,19 @@
         </details>
 
         <details class="google-drive-setup-step">
-          <summary>步骤 5：回到本插件，连接 Google 并开始上传</summary>
+          <summary>步骤 5：发布正式版，然后连接 Google 并开始上传</summary>
           <div class="google-drive-setup-body">
+            <p class="google-drive-where google-drive-where-warn"><strong>先发布正式版。</strong>停在「测试中」时，授权最多 7 天。发布免费，也不会上架到商店。</p>
             <ol class="google-drive-setup-sublist">
+              <li>打开 <a href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noopener noreferrer"><strong>目标对象</strong></a>，确认顶部是你的项目</li>
+              <li>点左侧 <strong>品牌塑造</strong>，在 <strong>应用网域</strong> 填入后点 <strong>保存</strong>：
+                <ul>
+                  <li><strong>应用首页</strong>：<code>https://meldino495-max.github.io/safecallrecorder-extension/</code></li>
+                  <li><strong>应用隐私权政策链接</strong>：<code>https://meldino495-max.github.io/safecallrecorder-extension/privacy.html</code></li>
+                  <li><strong>应用服务条款链接</strong>：<code>https://meldino495-max.github.io/safecallrecorder-extension/terms.html</code></li>
+                </ul>
+              </li>
+              <li>回到 <strong>目标对象</strong>。发布状态在这一页（概览页通常不显示）。确认是 <strong>测试中</strong> 后，点 <strong>发布应用</strong> 并确认。状态变为 <strong>正式版</strong> 即可</li>
               <li>确认 <strong>OAuth 客户端 ID</strong> 已保存；若需长期授权，确认 <strong>OAuth 客户端密钥</strong> 也已填写</li>
               <li>保持勾选 <strong>用自建客户端连接 Drive</strong></li>
               <li>点本页的 <strong>连接 Drive</strong></li>
@@ -550,6 +584,11 @@
           <div class="google-drive-folder-row">
             <button type="button" id="googleDrivePickFolder" class="btn outline small">更换文件夹</button>
             <button type="button" id="googleDriveUseDefaultFolder" class="btn outline small">使用默认文件夹</button>
+          </div>
+          <div id="googleDriveDropZone" class="google-drive-dropzone" tabindex="0" role="button" aria-label="拖入本地录音上传到云端">
+            <strong>拖入本地录音，直接上传到上方文件夹</strong>
+            <p class="hint">也可以点击这里选择文件。支持 MP3、WAV、M4A、WebM、OGG、FLAC。文件只上传到云端，不会写入录音历史。</p>
+            <input type="file" id="googleDriveDropInput" accept="audio/*,video/webm,video/mp4,.mp3,.wav,.m4a,.aac,.webm,.ogg,.opus,.flac" multiple hidden>
           </div>
         </div>
         <label class="row">上传方式

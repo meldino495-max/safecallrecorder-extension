@@ -17,8 +17,10 @@ describe("mp3 params", () => {
   });
 
   it("keeps the capture sample rate except for 16 and 24 kbps", () => {
-    expect(outputSampleRateForMp3(16000, 48000)).toBe(24000);
-    expect(outputSampleRateForMp3(24000, 48000)).toBe(24000);
+    // 22050/24000 make lamejs 1.2.1 export a silent 16/24 kbps file.
+    expect(outputSampleRateForMp3(16000, 48000)).toBe(16000);
+    expect(outputSampleRateForMp3(24000, 48000)).toBe(16000);
+    expect(outputSampleRateForMp3(16000, 8000)).toBe(8000);
     expect(outputSampleRateForMp3(32000, 48000)).toBe(48000);
     expect(outputSampleRateForMp3(48000, 48000)).toBe(48000);
     expect(outputSampleRateForMp3(64000, 48000)).toBe(48000);
